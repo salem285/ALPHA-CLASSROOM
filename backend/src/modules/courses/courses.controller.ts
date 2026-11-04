@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { CoursesService } from './courses.service.js';
 import { CreateCourseDto } from './dto/create-course.dto.js';
+import { EnrollCourseDto } from './dto/enroll-course.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -57,8 +58,9 @@ export class CoursesController {
   @Roles(UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN)
   async enroll(
     @Param('id') courseId: string,
+    @Body() dto: EnrollCourseDto,
     @CurrentUser('id') studentId: string,
   ) {
-    return this.coursesService.enroll(courseId, studentId);
+    return this.coursesService.enroll(courseId, studentId, dto);
   }
 }

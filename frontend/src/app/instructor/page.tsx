@@ -18,6 +18,9 @@ import {
   X,
   CheckCircle2,
   AlertCircle,
+  Key,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 export default function InstructorDashboardPage() {
@@ -29,11 +32,13 @@ export default function InstructorDashboardPage() {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [formSubmitting, setFormSubmitting] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
 
   // Form states
   const [title, setTitle] = useState('');
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
+  const [accessCode, setAccessCode] = useState('');
   const [isPublished, setIsPublished] = useState(true);
 
   const fetchTeachingCourses = useCallback(async () => {
@@ -68,10 +73,12 @@ export default function InstructorDashboardPage() {
     setFormSubmitting(true);
 
     try {
+      const trimmedAccess = accessCode.trim().toUpperCase();
       await api.post('/courses', {
         title,
         code,
         description,
+        accessCode: trimmedAccess || undefined,
         isPublished,
       });
 
@@ -80,12 +87,25 @@ export default function InstructorDashboardPage() {
       setTitle('');
       setCode('');
       setDescription('');
+      setAccessCode('');
       await fetchTeachingCourses();
     } catch (err: unknown) {
       const msg = err instanceof ApiError ? err.message : 'Failed to create course';
       setFeedback({ type: 'error', text: msg });
     } finally {
       setFormSubmitting(false);
+    }
+  };
+
+  const handleCopyCode = async (courseId: string, codeToCopy?: string) => {
+    if (!codeToCopy) return;
+    try {
+      await navigator.clipboard.writeText(codeToCopy);
+      setCopiedCodeId(courseId);
+      setTimeout(() => setCopiedCodeId(null), 2000);
+    } catch {
+      // Fallback if clipboard API is not available
+      setFeedback({ type: 'error', text: `Could not copy code automatically. Code is: ${codeToCopy}` });
     }
   };
 
@@ -154,7 +174,7 @@ export default function InstructorDashboardPage() {
               Instructor Studio &bull; {user.firstName} {user.lastName}
             </h2>
             <p className="text-slate-300 text-sm mt-1 max-w-xl">
-              Create and manage courses, curriculum syllabus, and monitor student enrollments.
+              Create and manage courses, curriculum syllabus, distribute secure access codes, and monitor student enrollments.
             </p>
           </div>
 
@@ -196,8 +216,8 @@ export default function InstructorDashboardPage() {
               <Sparkles className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Live Status</div>
-              <div className="text-2xl font-bold text-emerald-300 mt-0.5">Phase 5 Active</div>
+              <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Access Control</div>
+              <div className="text-2xl font-bold text-emerald-300 mt-0.5">Code Protected</div>
             </div>
           </div>
         </div>
@@ -250,7 +270,7 @@ export default function InstructorDashboardPage() {
             <BookOpen className="w-12 h-12 text-purple-400/40 mx-auto mb-3" />
             <h4 className="text-base font-bold text-white">No Courses Created Yet</h4>
             <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto mb-6">
-              You haven&apos;t published any courses yet. Create your first course to open enrollments for students.
+              You haven&apos;t published any courses yet. Create your first course to configure curriculum and distribute access codes.
             </p>
             <button
               onClick={() => setIsModalOpen(true)}
@@ -282,6 +302,40 @@ export default function InstructorDashboardPage() {
                   <p className="text-xs text-slate-400 mt-2 line-clamp-3 leading-relaxed">
                     {course.description || 'No detailed syllabus description provided yet.'}
                   </p>
+
+                  {/* Access Code Display Banner */}
+                  {course.accessCode && (
+                    <div className="mt-4 p-3 rounded-xl bg-[#0b0e1b] border border-[#222949] flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Key className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <div>
+                          <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                            Access Code
+                          </div>
+                          <span className="font-mono text-xs font-bold text-amber-300">
+                            {course.accessCode}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleCopyCode(course.id, course.accessCode)}
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-[#181f3d] hover:bg-[#222a52] text-slate-200 hover:text-white border border-[#2e3766] transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                        title="Copy Access Code"
+                      >
+                        {copiedCodeId === course.id ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-emerald-400">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="mt-6 pt-4 border-t border-[#1c223c] flex items-center justify-between text-xs text-slate-400">
@@ -343,6 +397,22 @@ export default function InstructorDashboardPage() {
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="w-full bg-[#0c0e1b] border border-[#252c4e] rounded-xl py-2 px-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 transition"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                    Access Code (Optional)
+                  </label>
+                  <span className="text-[11px] text-slate-500">Auto-generated if empty</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="e.g. ALPHA-2026"
+                  value={accessCode}
+                  onChange={(e) => setAccessCode(e.target.value)}
+                  className="w-full bg-[#0c0e1b] border border-[#252c4e] rounded-xl py-2 px-3 text-sm text-slate-100 placeholder-slate-500 uppercase font-mono focus:outline-none focus:border-purple-500 transition"
                 />
               </div>
 

@@ -21,4 +21,9 @@ export class CreateCourseDto {
   @IsOptional()
   @IsBoolean()
   isPublished?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(4, { message: 'Access code must be at least 4 characters long' })
+  accessCode?: string;
 }

@@ -3,6 +3,7 @@ export interface Course {
   title: string;
   code: string;
   description: string | null;
+  accessCode?: string;
   instructorId: string;
   isPublished: boolean;
   createdAt: string;

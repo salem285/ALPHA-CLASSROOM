@@ -35,6 +35,7 @@ model Course {
   title        String
   code         String       @unique
   description  String?
+  accessCode   String       @default("")
   instructorId String
   instructor   User         @relation("InstructedCourses", fields: [instructorId], references: [id])
   isPublished  Boolean      @default(true)

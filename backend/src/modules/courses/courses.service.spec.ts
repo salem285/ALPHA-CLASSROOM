@@ -37,13 +37,14 @@ describe('CoursesService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('should create course and uppercase code', async () => {
+    it('should create course, uppercase code, and generate access code if not provided', async () => {
       mockPrisma.course.findUnique.mockResolvedValue(null);
       mockPrisma.course.create.mockImplementation(({ data }: any) =>
         Promise.resolve({
           id: 'course-1',
           title: data.title,
           code: data.code,
+          accessCode: data.accessCode,
           instructorId: data.instructorId,
           isPublished: data.isPublished,
         }),
@@ -57,6 +58,51 @@ describe('CoursesService', () => {
 
       expect(result.code).toBe('CS102');
       expect(result.instructorId).toBe('instructor-1');
+      expect(result.accessCode).toBeDefined();
+      expect(result.accessCode).toMatch(/^ALPHA-[A-Z0-9]{4}$/);
+    });
+
+    it('should create course with custom access code uppercased', async () => {
+      mockPrisma.course.findUnique.mockResolvedValue(null);
+      mockPrisma.course.create.mockImplementation(({ data }: any) =>
+        Promise.resolve({
+          id: 'course-2',
+          title: data.title,
+          code: data.code,
+          accessCode: data.accessCode,
+          instructorId: data.instructorId,
+          isPublished: data.isPublished,
+        }),
+      );
+
+      const result = await coursesService.create(
+        { title: 'Algorithms', code: 'CS201', accessCode: 'algo-2026' },
+        'instructor-1',
+        UserRole.INSTRUCTOR,
+      );
+
+      expect(result.accessCode).toBe('ALGO-2026');
+    });
+  });
+
+  describe('findAll', () => {
+    it('should query courses with select excluding accessCode', async () => {
+      mockPrisma.course.findMany.mockImplementation(({ select }: any) => {
+        expect(select.accessCode).toBeUndefined();
+        return Promise.resolve([
+          {
+            id: 'c-1',
+            title: 'Intro to CS',
+            code: 'CS101',
+            description: 'Basics',
+            isPublished: true,
+          },
+        ]);
+      });
+
+      const courses = await coursesService.findAll(true);
+      expect(courses).toHaveLength(1);
+      expect((courses[0] as any).accessCode).toBeUndefined();
     });
   });
 
@@ -64,30 +110,57 @@ describe('CoursesService', () => {
     it('should throw NotFoundException if course does not exist', async () => {
       mockPrisma.course.findUnique.mockResolvedValue(null);
 
-      await expect(coursesService.enroll('c-999', 'student-1')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        coursesService.enroll('c-999', 'student-1', { accessCode: 'ALPHA-1234' }),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should throw BadRequestException if course is not published', async () => {
-      mockPrisma.course.findUnique.mockResolvedValue({ id: 'c-1', isPublished: false });
+      mockPrisma.course.findUnique.mockResolvedValue({
+        id: 'c-1',
+        isPublished: false,
+        accessCode: 'ALPHA-1234',
+      });
 
-      await expect(coursesService.enroll('c-1', 'student-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        coursesService.enroll('c-1', 'student-1', { accessCode: 'ALPHA-1234' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if access code does not match', async () => {
+      mockPrisma.course.findUnique.mockResolvedValue({
+        id: 'c-1',
+        isPublished: true,
+        accessCode: 'ALPHA-SECRET',
+      });
+
+      await expect(
+        coursesService.enroll('c-1', 'student-1', { accessCode: 'WRONG-CODE' }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        coursesService.enroll('c-1', 'student-1', { accessCode: 'WRONG-CODE' }),
+      ).rejects.toThrow(/Invalid course access code/i);
     });
 
     it('should throw ConflictException if student is already enrolled', async () => {
-      mockPrisma.course.findUnique.mockResolvedValue({ id: 'c-1', isPublished: true });
+      mockPrisma.course.findUnique.mockResolvedValue({
+        id: 'c-1',
+        isPublished: true,
+        accessCode: 'ALPHA-MATCH',
+      });
       mockPrisma.enrollment.findUnique.mockResolvedValue({ id: 'e-1' });
 
-      await expect(coursesService.enroll('c-1', 'student-1')).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        coursesService.enroll('c-1', 'student-1', { accessCode: 'ALPHA-MATCH' }),
+      ).rejects.toThrow(ConflictException);
     });
 
-    it('should enroll student and return active status', async () => {
-      mockPrisma.course.findUnique.mockResolvedValue({ id: 'c-1', isPublished: true });
+    it('should successfully enroll student when accessCode matches (case-insensitive)', async () => {
+      mockPrisma.course.findUnique.mockResolvedValue({
+        id: 'c-1',
+        isPublished: true,
+        accessCode: 'ALPHA-2026',
+      });
       mockPrisma.enrollment.findUnique.mockResolvedValue(null);
       mockPrisma.enrollment.create.mockResolvedValue({
         id: 'e-2',
@@ -97,7 +170,9 @@ describe('CoursesService', () => {
         course: { id: 'c-1', title: 'Data Structures', code: 'CS102' },
       });
 
-      const res = await coursesService.enroll('c-1', 'student-1');
+      const res = await coursesService.enroll('c-1', 'student-1', {
+        accessCode: 'alpha-2026',
+      });
       expect(res.enrollment.status).toBe('ACTIVE');
       expect(res.message).toContain('Data Structures');
     });

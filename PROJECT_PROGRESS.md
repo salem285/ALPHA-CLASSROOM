@@ -117,6 +117,18 @@
 - [x] Enhance `/student` page with "My Enrolled Courses" tab, "Course Catalog" tab, and one-click "Enroll Now" functionality
 - [x] Zero compilation errors verified for frontend (`npm run build`) and backend (`npm run build`)
 - [x] Live automated end-to-end test of course creation, student enrollment, duplicate prevention (409), and teaching counters
+- [x] **Course Access Code Security Upgrade**:
+  - Added `accessCode` field to `Course` model and executed migration `20261104162703_add_course_access_code`
+  - Regenerated Prisma Client with access code support
+  - Implemented `EnrollCourseDto` requiring valid access code for enrollment
+  - Configured `CoursesService.create` to accept custom codes or auto-generate `ALPHA-XXXX` format
+  - Secured public course catalog (`GET /api/v1/courses`) to strip `accessCode` from student-facing payloads
+  - Maintained `accessCode` visibility in instructor teaching catalog (`GET /courses/my/teaching`)
+  - Enforced case-insensitive access code validation in `CoursesService.enroll` with HTTP 400 rejection for mismatched codes
+  - Expanded unit test coverage in `CoursesService.spec.ts` (9 tests passing, total backend tests: 20)
+  - Updated `/instructor` portal with Access Code input on modal and "Copy Access Code" action on course cards
+  - Updated `/student` portal with interactive Enrollment Modal requiring instructor-provided access code
+  - Automated E2E verification of code validation, rejection on invalid code (400), and enrollment on valid code (201)
 
 ---
 

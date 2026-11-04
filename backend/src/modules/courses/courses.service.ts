@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateCourseDto } from './dto/create-course.dto.js';
+import { EnrollCourseDto } from './dto/enroll-course.dto.js';
 import { UserRole } from '@prisma/client';
 
 @Injectable()
@@ -30,11 +31,18 @@ export class CoursesService {
       }
     }
 
+    let accessCode = dto.accessCode?.trim().toUpperCase();
+    if (!accessCode) {
+      const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase().padEnd(4, '0');
+      accessCode = `ALPHA-${randomSuffix}`;
+    }
+
     return this.prisma.course.create({
       data: {
         title: dto.title.trim(),
         code: cleanCode,
         description: dto.description?.trim(),
+        accessCode,
         instructorId: assignedInstructorId,
         isPublished: dto.isPublished ?? true,
       },
@@ -54,7 +62,15 @@ export class CoursesService {
   async findAll(isPublished = true) {
     return this.prisma.course.findMany({
       where: isPublished ? { isPublished: true } : {},
-      include: {
+      select: {
+        id: true,
+        title: true,
+        code: true,
+        description: true,
+        instructorId: true,
+        isPublished: true,
+        createdAt: true,
+        updatedAt: true,
         instructor: {
           select: {
             id: true,
@@ -78,7 +94,15 @@ export class CoursesService {
   async findById(id: string) {
     const course = await this.prisma.course.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        code: true,
+        description: true,
+        instructorId: true,
+        isPublished: true,
+        createdAt: true,
+        updatedAt: true,
         instructor: {
           select: {
             id: true,
@@ -102,7 +126,7 @@ export class CoursesService {
     return course;
   }
 
-  async enroll(courseId: string, studentId: string) {
+  async enroll(courseId: string, studentId: string, dto: EnrollCourseDto) {
     const course = await this.prisma.course.findUnique({
       where: { id: courseId },
     });
@@ -113,6 +137,10 @@ export class CoursesService {
 
     if (!course.isPublished) {
       throw new BadRequestException('This course is not open for enrollment.');
+    }
+
+    if (!dto?.accessCode || dto.accessCode.trim().toUpperCase() !== course.accessCode.trim().toUpperCase()) {
+      throw new BadRequestException('Invalid course access code');
     }
 
     const existingEnrollment = await this.prisma.enrollment.findUnique({

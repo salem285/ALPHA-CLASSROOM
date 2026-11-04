@@ -18,6 +18,10 @@ import {
   AlertCircle,
   Compass,
   ArrowRight,
+  Key,
+  Lock,
+  X,
+  ShieldCheck,
 } from 'lucide-react';
 
 export default function StudentDashboardPage() {
@@ -28,8 +32,13 @@ export default function StudentDashboardPage() {
   const [catalog, setCatalog] = useState<Course[]>([]);
   const [activeTab, setActiveTab] = useState<'my' | 'catalog'>('my');
   const [loadingData, setLoadingData] = useState<boolean>(true);
-  const [enrollingId, setEnrollingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Enroll modal states
+  const [selectedCourseForEnroll, setSelectedCourseForEnroll] = useState<Course | null>(null);
+  const [accessCodeInput, setAccessCodeInput] = useState<string>('');
+  const [enrollModalError, setEnrollModalError] = useState<string | null>(null);
+  const [isEnrolling, setIsEnrolling] = useState<boolean>(false);
 
   const fetchStudentData = useCallback(async () => {
     setLoadingData(true);
@@ -59,19 +68,43 @@ export default function StudentDashboardPage() {
     }
   }, [user, loading, router, fetchStudentData]);
 
-  const handleEnroll = async (courseId: string, courseTitle: string) => {
-    setEnrollingId(courseId);
-    setFeedback(null);
+  const handleOpenEnrollModal = (course: Course) => {
+    setSelectedCourseForEnroll(course);
+    setAccessCodeInput('');
+    setEnrollModalError(null);
+  };
+
+  const handleEnrollSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCourseForEnroll) return;
+
+    const trimmedCode = accessCodeInput.trim().toUpperCase();
+    if (!trimmedCode) {
+      setEnrollModalError('Please enter the course access code.');
+      return;
+    }
+
+    setIsEnrolling(true);
+    setEnrollModalError(null);
+
     try {
-      await api.post(`/courses/${courseId}/enroll`);
-      setFeedback({ type: 'success', text: `Successfully enrolled in "${courseTitle}"!` });
+      await api.post(`/courses/${selectedCourseForEnroll.id}/enroll`, {
+        accessCode: trimmedCode,
+      });
+
+      setFeedback({
+        type: 'success',
+        text: `Successfully enrolled in "${selectedCourseForEnroll.title}"! Welcome to the class.`,
+      });
+      setSelectedCourseForEnroll(null);
+      setAccessCodeInput('');
       await fetchStudentData();
       setActiveTab('my');
     } catch (err: unknown) {
       const msg = err instanceof ApiError ? err.message : 'Enrollment failed';
-      setFeedback({ type: 'error', text: msg });
+      setEnrollModalError(msg);
     } finally {
-      setEnrollingId(null);
+      setIsEnrolling(false);
     }
   };
 
@@ -132,28 +165,70 @@ export default function StudentDashboardPage() {
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-6">
-        {/* Welcome Hero */}
-        <div className="bg-gradient-to-r from-indigo-950/40 via-[#131833] to-[#0f142b] border border-[#232b50] rounded-2xl p-6 sm:p-8 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+        {/* Welcome Hero & Stats */}
+        <div className="bg-gradient-to-r from-purple-950/40 via-[#131833] to-[#0f142b] border border-[#232b50] rounded-2xl p-6 sm:p-8 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800/60 mb-3">
-              Student Status: Active & Enrolled
+            <div className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-purple-950 text-purple-300 border border-purple-800/60 mb-3">
+              Learning Dashboard &bull; Alpha Coding
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
-              Hello, {user.firstName}!
+              Welcome back, {user.firstName}!
             </h2>
             <p className="text-slate-300 text-sm mt-1 max-w-xl">
-              Access your enrolled classes, explore new courses, and learn with Alpha Coding instructors.
+              Access your enrolled classes, explore new syllabus topics, and unlock courses with your instructor access code.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setActiveTab('catalog')}
+              onClick={() => setActiveTab(activeTab === 'my' ? 'catalog' : 'my')}
               className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2.5 px-5 rounded-xl shadow-lg shadow-purple-900/30 transition text-xs flex items-center gap-2 cursor-pointer"
             >
-              <Compass className="w-4 h-4" />
-              Browse Course Catalog
+              {activeTab === 'my' ? (
+                <>
+                  <Compass className="w-4 h-4" />
+                  Explore Course Catalog
+                </>
+              ) : (
+                <>
+                  <BookOpen className="w-4 h-4" />
+                  View Enrolled Courses
+                </>
+              )}
             </button>
+          </div>
+        </div>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-5 shadow-lg flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-purple-600/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+              <GraduationCap className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Enrolled Courses</div>
+              <div className="text-2xl font-bold text-white mt-0.5">{enrolledList.length}</div>
+            </div>
+          </div>
+
+          <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-5 shadow-lg flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Available Catalog</div>
+              <div className="text-2xl font-bold text-indigo-300 mt-0.5">{catalog.length}</div>
+            </div>
+          </div>
+
+          <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-5 shadow-lg flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <Key className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Access Security</div>
+              <div className="text-2xl font-bold text-amber-300 mt-0.5">Code Protected</div>
+            </div>
           </div>
         </div>
 
@@ -183,8 +258,8 @@ export default function StudentDashboardPage() {
           </div>
         )}
 
-        {/* Tab Selection Row */}
-        <div className="flex items-center justify-between border-b border-[#21294c] pb-4">
+        {/* Tabs Bar */}
+        <div className="flex items-center justify-between border-b border-[#1c223c] pb-3">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setActiveTab('my')}
@@ -194,7 +269,7 @@ export default function StudentDashboardPage() {
                   : 'text-slate-400 hover:text-white hover:bg-[#191f3a]'
               }`}
             >
-              <BookOpen className="w-3.5 h-3.5" />
+              <GraduationCap className="w-3.5 h-3.5" />
               My Enrolled Courses ({enrolledList.length})
             </button>
 
@@ -229,7 +304,7 @@ export default function StudentDashboardPage() {
                 <GraduationCap className="w-12 h-12 text-indigo-400/40 mx-auto mb-3" />
                 <h4 className="text-base font-bold text-white">No Course Enrollments Yet</h4>
                 <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto mb-6">
-                  You are not currently enrolled in any courses. Explore the catalog to join your first class!
+                  You are not currently enrolled in any courses. Explore the catalog and use your access code to join a class!
                 </p>
                 <button
                   onClick={() => setActiveTab('catalog')}
@@ -303,7 +378,6 @@ export default function StudentDashboardPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {catalog.map((course) => {
                   const enrolled = isEnrolled(course.id);
-                  const isEnrolling = enrollingId === course.id;
 
                   return (
                     <div
@@ -336,7 +410,10 @@ export default function StudentDashboardPage() {
                       </div>
 
                       <div className="mt-5 pt-4 border-t border-[#1c223c] flex items-center justify-between">
-                        <span className="text-[11px] text-slate-500">Free Enrollment</span>
+                        <span className="text-[11px] text-amber-300/80 flex items-center gap-1 font-medium">
+                          <Lock className="w-3 h-3 text-amber-400" />
+                          Code Required
+                        </span>
 
                         {enrolled ? (
                           <span className="px-3 py-1.5 rounded-lg bg-emerald-950 text-emerald-300 border border-emerald-800/60 text-xs font-semibold flex items-center gap-1">
@@ -345,17 +422,10 @@ export default function StudentDashboardPage() {
                           </span>
                         ) : (
                           <button
-                            onClick={() => handleEnroll(course.id, course.title)}
-                            disabled={isEnrolling}
-                            className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-1.5 px-4 rounded-lg text-xs transition flex items-center gap-1.5 shadow-md shadow-purple-900/30 disabled:opacity-50 cursor-pointer"
+                            onClick={() => handleOpenEnrollModal(course)}
+                            className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-1.5 px-4 rounded-lg text-xs transition flex items-center gap-1.5 shadow-md shadow-purple-900/30 cursor-pointer"
                           >
-                            {isEnrolling ? (
-                              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <>
-                                Enroll Now <ArrowRight className="w-3 h-3" />
-                              </>
-                            )}
+                            Enroll Now <ArrowRight className="w-3 h-3" />
                           </button>
                         )}
                       </div>
@@ -367,6 +437,104 @@ export default function StudentDashboardPage() {
           </div>
         )}
       </main>
+
+      {/* Enrollment Access Code Modal */}
+      {selectedCourseForEnroll && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-[#12162b] border border-[#2a345e] rounded-2xl w-full max-w-md p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-4 border-b border-[#21294c] mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                  <Key className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">Course Access Code</h3>
+                  <p className="text-[11px] text-slate-400">Enter code provided by your instructor</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedCourseForEnroll(null)}
+                className="text-slate-400 hover:text-white transition p-1 rounded-lg hover:bg-[#1a203a] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Selected Course Quick Info */}
+            <div className="mb-4 p-3 rounded-xl bg-[#0b0e1b] border border-[#1e2544]">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60">
+                  {selectedCourseForEnroll.code}
+                </span>
+                <span className="text-xs font-bold text-white line-clamp-1">
+                  {selectedCourseForEnroll.title}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Instructor: {selectedCourseForEnroll.instructor?.firstName} {selectedCourseForEnroll.instructor?.lastName}
+              </div>
+            </div>
+
+            {enrollModalError && (
+              <div className="mb-4 p-3 rounded-xl bg-rose-950/50 border border-rose-800/70 text-rose-200 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{enrollModalError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleEnrollSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Enter Course Access Code
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    placeholder="e.g. ALPHA-2026"
+                    value={accessCodeInput}
+                    onChange={(e) => setAccessCodeInput(e.target.value)}
+                    className="w-full bg-[#0c0e1b] border border-[#2a345e] focus:border-purple-500 rounded-xl py-2.5 px-3 pl-9 text-sm text-slate-100 placeholder-slate-500 font-mono uppercase tracking-wider focus:outline-none transition"
+                  />
+                  <Key className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                  Access codes are case-insensitive and assigned by course instructors.
+                </p>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-3 border-t border-[#21294c]">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCourseForEnroll(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isEnrolling}
+                  className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 px-5 rounded-xl text-xs transition shadow-lg shadow-purple-900/30 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                >
+                  {isEnrolling ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Verifying...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Key className="w-3.5 h-3.5" />
+                      <span>Verify & Enroll</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
