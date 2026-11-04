@@ -33,8 +33,7 @@ export class CoursesService {
 
     let accessCode = dto.accessCode?.trim().toUpperCase();
     if (!accessCode) {
-      const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase().padEnd(4, '0');
-      accessCode = `ALPHA-${randomSuffix}`;
+      accessCode = 'ALPHA-2026';
     }
 
     return this.prisma.course.create({
@@ -140,7 +139,7 @@ export class CoursesService {
     }
 
     if (!dto?.accessCode || dto.accessCode.trim().toUpperCase() !== course.accessCode.trim().toUpperCase()) {
-      throw new BadRequestException('Invalid course access code');
+      throw new BadRequestException('Invalid Access Code. Please request the enrollment key from the course instructor.');
     }
 
     const existingEnrollment = await this.prisma.enrollment.findUnique({
@@ -214,6 +213,29 @@ export class CoursesService {
       },
       orderBy: {
         enrolledAt: 'desc',
+      },
+    });
+  }
+
+  async findAllForAdmin() {
+    return this.prisma.course.findMany({
+      include: {
+        instructor: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
+        _count: {
+          select: {
+            enrollments: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
       },
     });
   }

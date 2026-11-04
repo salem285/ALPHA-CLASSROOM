@@ -139,7 +139,7 @@ describe('CoursesService', () => {
       ).rejects.toThrow(BadRequestException);
       await expect(
         coursesService.enroll('c-1', 'student-1', { accessCode: 'WRONG-CODE' }),
-      ).rejects.toThrow(/Invalid course access code/i);
+      ).rejects.toThrow(/Invalid Access Code/i);
     });
 
     it('should throw ConflictException if student is already enrolled', async () => {

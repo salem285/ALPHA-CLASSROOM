@@ -152,21 +152,65 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Seed demo quick-login banner */}
-          <div className="mt-6 pt-5 border-t border-[#1f2544] text-xs text-slate-400">
-            <span className="font-semibold text-slate-300">Default Super Admin:</span>
-            <div className="mt-1 flex items-center justify-between bg-[#0b0e1b] p-2 rounded-lg font-mono text-[11px] border border-[#1f2544]">
-              <span>admin@alphacoding.com</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('admin@alphacoding.com');
-                  setPassword('AdminPassword123!');
-                }}
-                className="text-purple-400 hover:underline font-sans cursor-pointer text-xs"
-              >
-                Auto-fill
-              </button>
+          {/* Quick Auto-fill Credentials for Demo / Testing */}
+          <div className="mt-6 pt-5 border-t border-[#1f2544] text-xs">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-semibold text-slate-300">Quick Sign-In Demo Accounts:</span>
+              <span className="font-mono text-[10px] text-purple-400 bg-purple-950/60 px-1.5 py-0.5 rounded border border-purple-800/40">
+                Alpha@2026!
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between bg-[#0b0e1b] px-2.5 py-1.5 rounded-lg border border-[#1f2544] text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded bg-purple-900/60 text-purple-300 text-[10px] font-bold">Admin</span>
+                  <span className="font-mono text-slate-300">admin@alphacoding.com</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('admin@alphacoding.com');
+                    setPassword('Alpha@2026!');
+                  }}
+                  className="text-purple-400 hover:text-purple-300 hover:underline font-semibold cursor-pointer"
+                >
+                  Auto-fill
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between bg-[#0b0e1b] px-2.5 py-1.5 rounded-lg border border-[#1f2544] text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded bg-indigo-900/60 text-indigo-300 text-[10px] font-bold">Instructor</span>
+                  <span className="font-mono text-slate-300">instructor@alphacoding.com</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('instructor@alphacoding.com');
+                    setPassword('Alpha@2026!');
+                  }}
+                  className="text-indigo-400 hover:text-indigo-300 hover:underline font-semibold cursor-pointer"
+                >
+                  Auto-fill
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between bg-[#0b0e1b] px-2.5 py-1.5 rounded-lg border border-[#1f2544] text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-300 text-[10px] font-bold">Student</span>
+                  <span className="font-mono text-slate-300">student@alphacoding.com</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('student@alphacoding.com');
+                    setPassword('Alpha@2026!');
+                  }}
+                  className="text-emerald-400 hover:text-emerald-300 hover:underline font-semibold cursor-pointer"
+                >
+                  Auto-fill
+                </button>
+              </div>
             </div>
           </div>
         </div>

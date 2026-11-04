@@ -740,8 +740,9 @@ export default function StudentDashboardPage() {
 
             <form onSubmit={handleEnrollSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                  Enter Course Access Code
+                <label className="block text-xs font-semibold text-amber-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Key className="w-3.5 h-3.5 text-amber-400" />
+                  Enter the Secret Access Code provided by your instructor
                 </label>
                 <div className="relative">
                   <input
@@ -751,10 +752,13 @@ export default function StudentDashboardPage() {
                     placeholder="e.g. ALPHA-2026"
                     value={accessCodeInput}
                     onChange={(e) => setAccessCodeInput(e.target.value)}
-                    className="w-full bg-[#0c0e1b] border border-[#2a345e] focus:border-purple-500 rounded-xl py-2.5 px-3 pl-9 text-sm text-slate-100 placeholder-slate-500 font-mono uppercase tracking-wider focus:outline-none transition"
+                    className="w-full bg-[#0c0e1b] border border-[#2a345e] focus:border-amber-500 rounded-xl py-2.5 px-3 pl-9 text-sm text-slate-100 placeholder-slate-500 font-mono uppercase tracking-wider focus:outline-none transition"
                   />
                   <Key className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                 </div>
+                <p className="text-[11px] text-slate-400 mt-1.5">
+                  Enter the Secret Access Code provided by your instructor to unlock course materials and lectures.
+                </p>
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-3 border-t border-[#21294c]">

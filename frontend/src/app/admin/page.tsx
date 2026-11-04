@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 import { api, ApiError } from '@/lib/api';
 import { User, UserRole } from '@/types/auth';
+import { Course } from '@/types/course';
 import {
   Shield,
   Users,
@@ -18,6 +19,10 @@ import {
   AlertTriangle,
   BookOpen,
   GraduationCap,
+  Key,
+  Copy,
+  Check,
+  Code,
 } from 'lucide-react';
 
 export default function AdminDashboardPage() {
@@ -26,22 +31,26 @@ export default function AdminDashboardPage() {
 
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [activeTab, setActiveTab] = useState<'pending' | 'all'>('pending');
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [activeTab, setActiveTab] = useState<'pending' | 'all' | 'courses'>('pending');
   const [loadingData, setLoadingData] = useState<boolean>(true);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
 
-  const fetchUsers = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     setLoadingData(true);
     try {
-      const [pending, all] = await Promise.all([
+      const [pending, all, courseList] = await Promise.all([
         api.get<User[]>('/users/pending'),
         api.get<User[]>('/users'),
+        api.get<Course[]>('/courses/admin/all').catch(() => []),
       ]);
       setPendingUsers(pending);
       setAllUsers(all);
+      setCourses(courseList);
     } catch (err: unknown) {
       if (err instanceof ApiError) {
-        setActionMessage({ type: 'error', text: `Failed to load users: ${err.message}` });
+        setActionMessage({ type: 'error', text: `Failed to load data: ${err.message}` });
       }
     } finally {
       setLoadingData(false);
@@ -55,17 +64,23 @@ export default function AdminDashboardPage() {
       } else if (user.role !== 'SUPER_ADMIN' && user.role !== 'ADMIN') {
         router.push(user.role === 'INSTRUCTOR' ? '/instructor' : '/student');
       } else {
-        fetchUsers();
+        fetchData();
       }
     }
-  }, [user, authLoading, router, fetchUsers]);
+  }, [user, authLoading, router, fetchData]);
+
+  const handleCopyCode = (id: string, code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCodeId(id);
+    setTimeout(() => setCopiedCodeId(null), 2000);
+  };
 
   const handleApprove = async (id: string, email: string) => {
     try {
       setActionMessage(null);
       await api.patch(`/users/${id}/approve`);
       setActionMessage({ type: 'success', text: `User ${email} was successfully approved!` });
-      await fetchUsers();
+      await fetchData();
     } catch (err: unknown) {
       const msg = err instanceof ApiError ? err.message : 'Approval failed';
       setActionMessage({ type: 'error', text: msg });
@@ -81,7 +96,7 @@ export default function AdminDashboardPage() {
       setActionMessage(null);
       await api.delete(`/users/${id}`);
       setActionMessage({ type: 'success', text: `Applicant ${email} was rejected and removed.` });
-      await fetchUsers();
+      await fetchData();
     } catch (err: unknown) {
       const msg = err instanceof ApiError ? err.message : 'Rejection failed';
       setActionMessage({ type: 'error', text: msg });
@@ -144,7 +159,7 @@ export default function AdminDashboardPage() {
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-6">
         {/* Welcome & Stats Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-5 shadow-lg flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-purple-600/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
               <Users className="w-6 h-6" />
@@ -176,6 +191,16 @@ export default function AdminDashboardPage() {
               </div>
             </div>
           </div>
+
+          <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-5 shadow-lg flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Total Courses</div>
+              <div className="text-2xl font-bold text-indigo-300 mt-0.5">{courses.length}</div>
+            </div>
+          </div>
         </div>
 
         {/* Action feedback toast */}
@@ -201,7 +226,7 @@ export default function AdminDashboardPage() {
         <div className="bg-[#12162b] border border-[#21294c] rounded-2xl shadow-xl overflow-hidden">
           {/* Card Header & Tabs */}
           <div className="px-6 py-4 border-b border-[#21294c] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setActiveTab('pending')}
                 className={`px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-2 ${
@@ -225,10 +250,22 @@ export default function AdminDashboardPage() {
                 <Users className="w-3.5 h-3.5" />
                 All Users ({allUsers.length})
               </button>
+
+              <button
+                onClick={() => setActiveTab('courses')}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-2 ${
+                  activeTab === 'courses'
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-900/30'
+                    : 'text-slate-400 hover:text-white hover:bg-[#191f3a]'
+                }`}
+              >
+                <Key className="w-3.5 h-3.5 text-amber-400" />
+                Courses & Access Codes ({courses.length})
+              </button>
             </div>
 
             <button
-              onClick={fetchUsers}
+              onClick={fetchData}
               disabled={loadingData}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#262e52] hover:bg-[#1a203a] text-xs font-medium text-slate-300 disabled:opacity-50 cursor-pointer"
             >
@@ -297,7 +334,7 @@ export default function AdminDashboardPage() {
                   </tbody>
                 </table>
               )
-            ) : (
+            ) : activeTab === 'all' ? (
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-[#1c223c] bg-[#0f1222] text-slate-400 uppercase tracking-wider font-semibold">
@@ -340,6 +377,89 @@ export default function AdminDashboardPage() {
                   ))}
                 </tbody>
               </table>
+            ) : (
+              courses.length === 0 ? (
+                <div className="p-12 text-center text-slate-400">
+                  <BookOpen className="w-10 h-10 text-purple-400/60 mx-auto mb-3" />
+                  <p className="font-semibold text-slate-200">No Courses Registered</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Instructors haven&apos;t created any courses yet.
+                  </p>
+                </div>
+              ) : (
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-[#1c223c] bg-[#0f1222] text-slate-400 uppercase tracking-wider font-semibold">
+                      <th className="py-3 px-6">Course</th>
+                      <th className="py-3 px-6">Instructor</th>
+                      <th className="py-3 px-6">Enrollments</th>
+                      <th className="py-3 px-6">Enrollment Access Code</th>
+                      <th className="py-3 px-6">Status</th>
+                      <th className="py-3 px-6">Created At</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1a2038]">
+                    {courses.map((c) => (
+                      <tr key={c.id} className="hover:bg-[#151932] transition">
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-800/60">
+                              {c.code}
+                            </span>
+                            <span className="font-bold text-white text-sm">{c.title}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="font-medium text-slate-200">
+                            {c.instructor?.firstName} {c.instructor?.lastName}
+                          </div>
+                          <div className="text-[11px] font-mono text-slate-400">{c.instructor?.email}</div>
+                        </td>
+                        <td className="py-4 px-6">
+                          <span className="inline-flex items-center gap-1 font-semibold text-indigo-300 bg-indigo-950/40 px-2.5 py-1 rounded-md border border-indigo-800/40">
+                            <Users className="w-3 h-3" />
+                            {c._count?.enrollments || 0} students
+                          </span>
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="inline-flex items-center gap-2 bg-[#0c0e1b] px-3 py-1.5 rounded-xl border border-amber-500/40 shadow-sm">
+                            <Key className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="font-mono text-xs font-extrabold text-amber-300 tracking-wider">
+                              {c.accessCode || 'ALPHA-2026'}
+                            </span>
+                            <button
+                              onClick={() => handleCopyCode(c.id, c.accessCode || 'ALPHA-2026')}
+                              className="ml-1 text-[11px] font-semibold text-slate-400 hover:text-white transition cursor-pointer flex items-center gap-1"
+                              title="Copy Access Code"
+                            >
+                              {copiedCodeId === c.id ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5 text-slate-400 hover:text-white" />
+                              )}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6">
+                          {c.isPublished ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-950/60 text-emerald-300 border border-emerald-800/60">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              Published
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">
+                              Draft
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-4 px-6 text-slate-400">
+                          {new Date(c.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
             )}
           </div>
         </div>

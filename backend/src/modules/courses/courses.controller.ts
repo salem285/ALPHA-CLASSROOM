@@ -48,6 +48,13 @@ export class CoursesController {
     return this.coursesService.findEnrolled(studentId);
   }
 
+  @Get('admin/all')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  async findAllForAdmin() {
+    return this.coursesService.findAllForAdmin();
+  }
+
   @Get(':id')
   async findById(@Param('id') id: string) {
     return this.coursesService.findById(id);

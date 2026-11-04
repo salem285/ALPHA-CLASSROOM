@@ -232,12 +232,12 @@ export default function InstructorDashboardPage() {
     setFormSubmitting(true);
 
     try {
-      const trimmedAccess = accessCode.trim().toUpperCase();
+      const trimmedAccess = accessCode.trim().toUpperCase() || 'ALPHA-2026';
       await api.post('/courses', {
         title,
         code,
         description,
-        accessCode: trimmedAccess || undefined,
+        accessCode: trimmedAccess,
         isPublished,
       });
 
@@ -711,38 +711,39 @@ export default function InstructorDashboardPage() {
                         {course.description || 'No detailed syllabus description provided yet.'}
                       </p>
 
-                      {course.accessCode && (
-                        <div className="mt-4 p-3 rounded-xl bg-[#0b0e1b] border border-[#222949] flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Key className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                            <div>
-                              <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
-                                Access Code
-                              </div>
-                              <span className="font-mono text-xs font-bold text-amber-300">
-                                {course.accessCode}
-                              </span>
-                            </div>
+                      {/* Prominent Enrollment Access Code Badge */}
+                      <div className="mt-4 p-3 rounded-xl bg-gradient-to-r from-amber-950/40 via-[#161426] to-[#0f1325] border border-amber-500/40 shadow-sm flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                            <Key className="w-4 h-4 text-amber-400" />
                           </div>
-                          <button
-                            onClick={() => handleCopyCode(course.id, course.accessCode)}
-                            className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-[#181f3d] hover:bg-[#222a52] text-slate-200 hover:text-white border border-[#2e3766] transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-                            title="Copy Access Code"
-                          >
-                            {copiedCodeId === course.id ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                <span className="text-emerald-400">Copied</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5 text-slate-400" />
-                                <span>Copy</span>
-                              </>
-                            )}
-                          </button>
+                          <div className="min-w-0">
+                            <div className="text-[10px] text-amber-300/90 font-bold uppercase tracking-wider">
+                              Enrollment Access Code
+                            </div>
+                            <span className="font-mono text-xs sm:text-sm font-extrabold text-amber-300 tracking-wide block truncate">
+                              {course.accessCode || 'ALPHA-2026'}
+                            </span>
+                          </div>
                         </div>
-                      )}
+                        <button
+                          onClick={() => handleCopyCode(course.id, course.accessCode || 'ALPHA-2026')}
+                          className="shrink-0 text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 hover:text-white border border-amber-500/50 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                          title="Copy Access Code for Students"
+                        >
+                          {copiedCodeId === course.id ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span className="text-emerald-300">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Copy Code</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
 
                       {/* Live Classroom Controls */}
                       {activeRooms[course.id] ? (
@@ -1117,18 +1118,22 @@ export default function InstructorDashboardPage() {
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                    Access Code (Optional)
+                  <label className="text-xs font-semibold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-amber-400" />
+                    Enrollment Access Code
                   </label>
-                  <span className="text-[11px] text-slate-500">Auto-generated if empty</span>
+                  <span className="text-[11px] text-slate-400">Default: ALPHA-2026</span>
                 </div>
                 <input
                   type="text"
                   placeholder="e.g. ALPHA-2026"
                   value={accessCode}
                   onChange={(e) => setAccessCode(e.target.value)}
-                  className="w-full bg-[#0c0e1b] border border-[#252c4e] rounded-xl py-2 px-3 text-sm text-slate-100 placeholder-slate-500 uppercase font-mono focus:outline-none focus:border-purple-500 transition"
+                  className="w-full bg-[#0c0e1b] border border-[#252c4e] focus:border-amber-500 rounded-xl py-2 px-3 text-sm text-slate-100 placeholder-slate-500 uppercase font-mono focus:outline-none transition"
                 />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Students will enter this code to enroll in your course. Leave empty to use default &apos;ALPHA-2026&apos;.
+                </p>
               </div>
 
               <div>
