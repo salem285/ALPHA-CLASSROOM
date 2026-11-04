@@ -15,18 +15,19 @@ enum UserRole {
 }
 
 model User {
-  id                String       @id @default(uuid())
-  email             String       @unique
+  id                String        @id @default(uuid())
+  email             String        @unique
   password          String
   firstName         String
   lastName          String
-  role              UserRole     @default(STUDENT)
-  isApproved        Boolean      @default(false)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
-  instructedCourses Course[]     @relation("InstructedCourses")
-  enrollments       Enrollment[] @relation("StudentEnrollments")
-  submissions       Submission[] @relation("StudentSubmissions")
+  role              UserRole      @default(STUDENT)
+  isApproved        Boolean       @default(false)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  instructedCourses Course[]      @relation("InstructedCourses")
+  enrollments       Enrollment[]  @relation("StudentEnrollments")
+  submissions       Submission[]  @relation("StudentSubmissions")
+  examAttempts      ExamAttempt[] @relation("StudentExamAttempts")
 
   @@map("users")
 }
@@ -44,6 +45,7 @@ model Course {
   updatedAt    DateTime     @updatedAt
   enrollments  Enrollment[]
   assignments  Assignment[]
+  exams        Exam[]
 
   @@map("courses")
 }
@@ -91,4 +93,55 @@ model Submission {
 
   @@unique([assignmentId, studentId])
   @@map("submissions")
+}
+
+model Exam {
+  id              String        @id @default(uuid())
+  courseId        String
+  course          Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title           String
+  description     String?
+  durationMinutes Int           // e.g. 30 minutes
+  passingScore    Float         @default(50.0)
+  totalScore      Float         @default(100.0)
+  startTime       DateTime?
+  endTime         DateTime?
+  isPublished     Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  questions       Question[]
+  attempts        ExamAttempt[]
+
+  @@map("exams")
+}
+
+model Question {
+  id            String   @id @default(uuid())
+  examId        String
+  exam          Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  text          String
+  type          String   @default("MULTIPLE_CHOICE") // MULTIPLE_CHOICE, TRUE_FALSE
+  points        Float    @default(1.0)
+  options       Json     // e.g. [{"id": "a", "text": "..."}, {"id": "b", "text": "..."}]
+  correctAnswer String   // "a", "b", etc. (Must NOT be sent to students taking the exam)
+  orderIndex    Int      @default(0)
+
+  @@map("questions")
+}
+
+model ExamAttempt {
+  id          String    @id @default(uuid())
+  examId      String
+  exam        Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User      @relation("StudentExamAttempts", fields: [studentId], references: [id], onDelete: Cascade)
+  answers     Json?     // e.g. {"questionId": "selectedOptionId"}
+  score       Float?
+  isPassed    Boolean?
+  startedAt   DateTime  @default(now())
+  submittedAt DateTime?
+  status      String    @default("IN_PROGRESS") // IN_PROGRESS, SUBMITTED, AUTO_GRADED
+
+  @@unique([examId, studentId]) // Single attempt policy
+  @@map("exam_attempts")
 }

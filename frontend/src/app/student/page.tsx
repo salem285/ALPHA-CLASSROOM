@@ -7,6 +7,7 @@ import { useAuth } from '@/context/auth-context';
 import { api, ApiError } from '@/lib/api';
 import { Course, Enrollment } from '@/types/course';
 import { Assignment } from '@/types/assignment';
+import { Exam, ExamAttempt } from '@/types/exam';
 import {
   GraduationCap,
   BookOpen,
@@ -28,6 +29,9 @@ import {
   Clock,
   Send,
   ExternalLink,
+  CheckSquare,
+  Timer,
+  Check,
 } from 'lucide-react';
 
 export default function StudentDashboardPage() {
@@ -46,16 +50,38 @@ export default function StudentDashboardPage() {
   const [enrollModalError, setEnrollModalError] = useState<string | null>(null);
   const [isEnrolling, setIsEnrolling] = useState<boolean>(false);
 
-  // Coursework / Assignments viewer states
+  // Coursework / Course Details modal states
   const [activeCourseForAssignments, setActiveCourseForAssignments] = useState<Course | null>(null);
+  const [courseModalTab, setCourseModalTab] = useState<'assignments' | 'exams'>('assignments');
   const [courseAssignments, setCourseAssignments] = useState<Assignment[]>([]);
   const [loadingAssignments, setLoadingAssignments] = useState<boolean>(false);
+  const [courseExams, setCourseExams] = useState<Exam[]>([]);
+  const [loadingExams, setLoadingExams] = useState<boolean>(false);
 
   // Submit Assignment states
   const [submittingAssignment, setSubmittingAssignment] = useState<Assignment | null>(null);
   const [submissionContent, setSubmissionContent] = useState<string>('');
   const [isSendingSubmission, setIsSendingSubmission] = useState<boolean>(false);
   const [submissionModalError, setSubmissionModalError] = useState<string | null>(null);
+
+  // Exam Player states
+  const [takingExamData, setTakingExamData] = useState<{
+    exam: Exam;
+    attempt: ExamAttempt;
+    remainingSeconds: number;
+  } | null>(null);
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(0);
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
+  const [submittingExam, setSubmittingExam] = useState<boolean>(false);
+
+  // Exam Result Card state
+  const [examResultData, setExamResultData] = useState<{
+    message: string;
+    score: number;
+    isPassed: boolean;
+    totalScore: number;
+    passingScore: number;
+  } | null>(null);
 
   const fetchStudentData = useCallback(async () => {
     setLoadingData(true);
@@ -88,10 +114,42 @@ export default function StudentDashboardPage() {
     }
   };
 
+  const fetchCourseExams = async (courseId: string) => {
+    setLoadingExams(true);
+    try {
+      const data = await api.get<Exam[]>(`/courses/${courseId}/exams`);
+      setCourseExams(data);
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to load exams';
+      setFeedback({ type: 'error', text: msg });
+    } finally {
+      setLoadingExams(false);
+    }
+  };
+
   const handleOpenCoursework = async (course: Course) => {
     setActiveCourseForAssignments(course);
-    await fetchCourseAssignments(course.id);
+    setCourseModalTab('assignments');
+    await Promise.all([
+      fetchCourseAssignments(course.id),
+      fetchCourseExams(course.id),
+    ]);
   };
+
+  // Exam Countdown Timer Effect
+  useEffect(() => {
+    if (!takingExamData || countdownSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setCountdownSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [takingExamData, countdownSeconds]);
 
   useEffect(() => {
     if (!loading) {
@@ -187,8 +245,60 @@ export default function StudentDashboardPage() {
     }
   };
 
+  const handleStartExam = async (examId: string) => {
+    setFeedback(null);
+    try {
+      const data = await api.get<{
+        exam: Exam;
+        attempt: ExamAttempt;
+        remainingSeconds: number;
+      }>(`/exams/${examId}/take`);
+
+      setTakingExamData(data);
+      setCountdownSeconds(data.remainingSeconds);
+      setSelectedAnswers((data.attempt.answers as Record<string, string>) || {});
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to start exam';
+      setFeedback({ type: 'error', text: msg });
+    }
+  };
+
+  const handleSubmitExam = async () => {
+    if (!takingExamData) return;
+    setSubmittingExam(true);
+    try {
+      const res = await api.post<{
+        message: string;
+        score: number;
+        isPassed: boolean;
+        totalScore: number;
+        passingScore: number;
+        attempt: ExamAttempt;
+      }>(`/exams/${takingExamData.exam.id}/submit`, {
+        answers: selectedAnswers,
+      });
+
+      setTakingExamData(null);
+      setExamResultData(res);
+      if (activeCourseForAssignments) {
+        await fetchCourseExams(activeCourseForAssignments.id);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Exam submission failed';
+      setFeedback({ type: 'error', text: msg });
+    } finally {
+      setSubmittingExam(false);
+    }
+  };
+
   const isEnrolled = (courseId: string) => {
     return enrolledList.some((e) => e.courseId === courseId || e.course?.id === courseId);
+  };
+
+  const formatCountdown = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
   if (loading || !user) {
@@ -254,7 +364,7 @@ export default function StudentDashboardPage() {
               Welcome back, {user.firstName}!
             </h2>
             <p className="text-slate-300 text-sm mt-1 max-w-xl">
-              Access your enrolled classes, complete assignments, review instructor grading feedback, and unlock new courses.
+              Access enrolled courses, complete homework assignments, and participate in timed online examinations with automatic grading.
             </p>
           </div>
 
@@ -292,11 +402,11 @@ export default function StudentDashboardPage() {
 
           <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-5 shadow-lg flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-              <BookOpen className="w-6 h-6" />
+              <CheckSquare className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Available Catalog</div>
-              <div className="text-2xl font-bold text-indigo-300 mt-0.5">{catalog.length}</div>
+              <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Exam Engine</div>
+              <div className="text-2xl font-bold text-indigo-300 mt-0.5">Automated</div>
             </div>
           </div>
 
@@ -305,8 +415,8 @@ export default function StudentDashboardPage() {
               <Award className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Assignments System</div>
-              <div className="text-2xl font-bold text-emerald-300 mt-0.5">Active & Graded</div>
+              <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Coursework & Exams</div>
+              <div className="text-2xl font-bold text-emerald-300 mt-0.5">Active</div>
             </div>
           </div>
         </div>
@@ -436,7 +546,7 @@ export default function StudentDashboardPage() {
                         className="bg-purple-600/25 hover:bg-purple-600/40 text-purple-200 border border-purple-500/40 px-3 py-1.5 rounded-xl font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
                       >
                         <FileText className="w-3.5 h-3.5 text-purple-400" />
-                        View Coursework
+                        Assignments & Exams
                       </button>
                     </div>
                   </div>
@@ -453,9 +563,6 @@ export default function StudentDashboardPage() {
               <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center text-slate-400">
                 <Compass className="w-12 h-12 text-purple-400/40 mx-auto mb-3" />
                 <p className="font-semibold text-slate-200">Catalog is Currently Empty</p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Instructors are currently preparing new courses. Check back shortly!
-                </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -543,7 +650,6 @@ export default function StudentDashboardPage() {
               </button>
             </div>
 
-            {/* Selected Course Quick Info */}
             <div className="mb-4 p-3 rounded-xl bg-[#0b0e1b] border border-[#1e2544]">
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60">
@@ -552,9 +658,6 @@ export default function StudentDashboardPage() {
                 <span className="text-xs font-bold text-white line-clamp-1">
                   {selectedCourseForEnroll.title}
                 </span>
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Instructor: {selectedCourseForEnroll.instructor?.firstName} {selectedCourseForEnroll.instructor?.lastName}
               </div>
             </div>
 
@@ -582,10 +685,6 @@ export default function StudentDashboardPage() {
                   />
                   <Key className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                  Access codes are case-insensitive and assigned by course instructors.
-                </p>
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-3 border-t border-[#21294c]">
@@ -619,7 +718,7 @@ export default function StudentDashboardPage() {
         </div>
       )}
 
-      {/* Coursework & Assignments Viewer Modal */}
+      {/* Coursework & Exams Modal */}
       {activeCourseForAssignments && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
           <div className="bg-[#12162b] border border-[#2a345e] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl relative">
@@ -631,129 +730,124 @@ export default function StudentDashboardPage() {
                     {activeCourseForAssignments.code}
                   </span>
                   <h3 className="font-bold text-white text-lg">
-                    {activeCourseForAssignments.title} &bull; Coursework
+                    {activeCourseForAssignments.title} &bull; Course Portal
                   </h3>
                 </div>
-                <p className="text-xs text-slate-400 mt-1">
-                  Active homework assignments, submission status, and instructor grades.
-                </p>
+                <div className="flex items-center gap-2 mt-3">
+                  <button
+                    onClick={() => setCourseModalTab('assignments')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      courseModalTab === 'assignments'
+                        ? 'bg-purple-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white hover:bg-[#1a203a]'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Homework & Assignments ({courseAssignments.length})
+                  </button>
+
+                  <button
+                    onClick={() => setCourseModalTab('exams')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      courseModalTab === 'exams'
+                        ? 'bg-purple-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white hover:bg-[#1a203a]'
+                    }`}
+                  >
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    Online Exams ({courseExams.length})
+                  </button>
+                </div>
               </div>
               <button
                 onClick={() => setActiveCourseForAssignments(null)}
-                className="text-slate-400 hover:text-white transition p-1 rounded-lg hover:bg-[#1a203a] cursor-pointer"
+                className="text-slate-400 hover:text-white transition p-1 rounded-lg hover:bg-[#1a203a] cursor-pointer self-start"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Content List */}
-            <div className="p-6 overflow-y-auto flex-1 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                  Assignments ({courseAssignments.length})
-                </span>
-                <button
-                  onClick={() => fetchCourseAssignments(activeCourseForAssignments.id)}
-                  disabled={loadingAssignments}
-                  className="text-xs px-2.5 py-1 rounded-lg border border-[#232948] hover:bg-[#1a203a] text-slate-300 transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3 h-3 ${loadingAssignments ? 'animate-spin' : ''}`} />
-                  Refresh
-                </button>
-              </div>
+            {/* Modal Body: Assignments Tab */}
+            {courseModalTab === 'assignments' && (
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                {loadingAssignments ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    <span className="text-xs">Loading course assignments...</span>
+                  </div>
+                ) : courseAssignments.length === 0 ? (
+                  <div className="bg-[#0c0e1b] border border-[#202848] rounded-xl p-8 text-center text-slate-400">
+                    <FileText className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-slate-300">No Assignments Yet</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {courseAssignments.map((assignment) => {
+                      const studentSub = assignment.submissions && assignment.submissions.length > 0
+                        ? assignment.submissions[0]
+                        : null;
+                      const isGraded = studentSub?.status === 'GRADED';
+                      const isSubmitted = studentSub?.status === 'SUBMITTED';
+                      const isLink = studentSub?.content?.startsWith('http://') || studentSub?.content?.startsWith('https://');
 
-              {loadingAssignments ? (
-                <div className="py-12 text-center text-slate-400">
-                  <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                  <span className="text-xs">Loading course assignments...</span>
-                </div>
-              ) : courseAssignments.length === 0 ? (
-                <div className="bg-[#0c0e1b] border border-[#202848] rounded-xl p-8 text-center text-slate-400">
-                  <FileText className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                  <p className="text-sm font-semibold text-slate-300">No Coursework Assigned</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Your instructor has not published any assignments for this course yet.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {courseAssignments.map((assignment) => {
-                    const studentSub = assignment.submissions && assignment.submissions.length > 0
-                      ? assignment.submissions[0]
-                      : null;
-                    const isGraded = studentSub?.status === 'GRADED';
-                    const isSubmitted = studentSub?.status === 'SUBMITTED';
-                    const isLink = studentSub?.content?.startsWith('http://') || studentSub?.content?.startsWith('https://');
+                      return (
+                        <div
+                          key={assignment.id}
+                          className="bg-[#0b0e1b] border border-[#222949] rounded-xl p-5 shadow flex flex-col md:flex-row md:items-start justify-between gap-5"
+                        >
+                          <div className="flex-1 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-bold text-white text-base">{assignment.title}</h4>
+                              <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60">
+                                Max: {assignment.maxScore} pts
+                              </span>
+                            </div>
 
-                    return (
-                      <div
-                        key={assignment.id}
-                        className="bg-[#0b0e1b] border border-[#222949] rounded-xl p-5 shadow flex flex-col md:flex-row md:items-start justify-between gap-5"
-                      >
-                        <div className="flex-1 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <h4 className="font-bold text-white text-base">{assignment.title}</h4>
-                            <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60">
-                              Max: {assignment.maxScore} pts
-                            </span>
-                          </div>
+                            <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
+                              {assignment.description}
+                            </p>
 
-                          <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
-                            {assignment.description}
-                          </p>
-
-                          <div className="flex items-center gap-3 text-xs text-slate-400 pt-1">
-                            <span className="flex items-center gap-1 text-[11px]">
-                              <Clock className="w-3.5 h-3.5 text-slate-500" />
-                              Due: {assignment.dueDate ? new Date(assignment.dueDate).toLocaleDateString() : 'No deadline'}
-                            </span>
-                          </div>
-
-                          {/* Existing submission details */}
-                          {studentSub && (
-                            <div className="mt-3 p-3.5 rounded-xl bg-[#12162b] border border-[#1e2547] space-y-2">
-                              <div className="text-[10px] font-semibold uppercase text-slate-400 tracking-wider">
-                                Your Submission ({new Date(studentSub.submittedAt).toLocaleString()}):
-                              </div>
-                              <div className="text-xs">
-                                {isLink ? (
-                                  <a
-                                    href={studentSub.content}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-indigo-400 hover:text-indigo-300 underline font-mono flex items-center gap-1 break-all"
-                                  >
-                                    {studentSub.content}
-                                    <ExternalLink className="w-3 h-3 shrink-0" />
-                                  </a>
-                                ) : (
-                                  <p className="text-slate-200 whitespace-pre-wrap">{studentSub.content}</p>
-                                )}
-                              </div>
-
-                              {/* Graded feedback card */}
-                              {isGraded && (
-                                <div className="mt-3 pt-2.5 border-t border-[#1a213e]">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <Award className="w-4 h-4 text-emerald-400" />
-                                    <span className="font-bold text-emerald-300 text-sm">
-                                      Grade: {studentSub.score} / {assignment.maxScore} pts
-                                    </span>
-                                  </div>
-                                  {studentSub.feedback && (
-                                    <p className="text-xs text-slate-300 italic pl-6">
-                                      &ldquo;{studentSub.feedback}&rdquo;
-                                    </p>
+                            {studentSub && (
+                              <div className="mt-3 p-3.5 rounded-xl bg-[#12162b] border border-[#1e2547] space-y-2">
+                                <div className="text-[10px] font-semibold uppercase text-slate-400 tracking-wider">
+                                  Your Submission ({new Date(studentSub.submittedAt).toLocaleString()}):
+                                </div>
+                                <div className="text-xs">
+                                  {isLink ? (
+                                    <a
+                                      href={studentSub.content}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-indigo-400 hover:text-indigo-300 underline font-mono flex items-center gap-1 break-all"
+                                    >
+                                      {studentSub.content}
+                                      <ExternalLink className="w-3 h-3 shrink-0" />
+                                    </a>
+                                  ) : (
+                                    <p className="text-slate-200 whitespace-pre-wrap">{studentSub.content}</p>
                                   )}
                                 </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
 
-                        {/* Status & Submission Action */}
-                        <div className="w-full md:w-56 shrink-0 flex flex-col justify-between items-end border-t md:border-t-0 md:border-l border-[#1a213e] pt-3 md:pt-0 md:pl-5 space-y-3">
-                          <div className="w-full text-right">
+                                {isGraded && (
+                                  <div className="mt-3 pt-2.5 border-t border-[#1a213e]">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <Award className="w-4 h-4 text-emerald-400" />
+                                      <span className="font-bold text-emerald-300 text-sm">
+                                        Grade: {studentSub.score} / {assignment.maxScore} pts
+                                      </span>
+                                    </div>
+                                    {studentSub.feedback && (
+                                      <p className="text-xs text-slate-300 italic pl-6">
+                                        &ldquo;{studentSub.feedback}&rdquo;
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="w-full md:w-56 shrink-0 flex flex-col justify-between items-end border-t md:border-t-0 md:border-l border-[#1a213e] pt-3 md:pt-0 md:pl-5 space-y-3">
                             <span
                               className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold border ${
                                 isGraded
@@ -769,24 +863,106 @@ export default function StudentDashboardPage() {
                                 ? 'Submitted & In Review'
                                 : 'Pending Submission'}
                             </span>
+
+                            {!isGraded && (
+                              <button
+                                onClick={() => handleOpenSubmitModal(assignment)}
+                                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 px-3 rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                                <span>{isSubmitted ? 'Update Submission' : 'Submit Work'}</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Modal Body: Exams Tab */}
+            {courseModalTab === 'exams' && (
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                {loadingExams ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    <span className="text-xs">Loading course exams...</span>
+                  </div>
+                ) : courseExams.length === 0 ? (
+                  <div className="bg-[#0c0e1b] border border-[#202848] rounded-xl p-8 text-center text-slate-400">
+                    <CheckSquare className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-slate-300">No Online Exams Available</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Your instructor has not scheduled any exams for this course yet.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {courseExams.map((exam) => {
+                      const studentAttempt = exam.attempts && exam.attempts.length > 0
+                        ? exam.attempts[0]
+                        : null;
+                      const hasCompleted = studentAttempt?.status === 'AUTO_GRADED' || studentAttempt?.status === 'SUBMITTED';
+
+                      return (
+                        <div
+                          key={exam.id}
+                          className="bg-[#0b0e1b] border border-[#222949] rounded-xl p-5 shadow flex flex-col md:flex-row md:items-center justify-between gap-5"
+                        >
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-bold text-white text-base">{exam.title}</h4>
+                              <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800/60">
+                                {exam.durationMinutes} mins
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-slate-300 leading-relaxed">
+                              {exam.description || 'Timed multiple-choice exam with automated instant evaluation.'}
+                            </p>
+
+                            <div className="flex items-center gap-3 text-xs text-slate-400 pt-1">
+                              <span>Passing Threshold: {exam.passingScore} / {exam.totalScore} pts</span>
+                              <span>&bull;</span>
+                              <span>Questions: {exam._count?.questions || exam.questions?.length || 0}</span>
+                            </div>
                           </div>
 
-                          {!isGraded && (
-                            <button
-                              onClick={() => handleOpenSubmitModal(assignment)}
-                              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 px-3 rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-purple-900/30 cursor-pointer"
-                            >
-                              <Send className="w-3.5 h-3.5" />
-                              <span>{isSubmitted ? 'Update Submission' : 'Submit Work'}</span>
-                            </button>
-                          )}
+                          <div className="w-full md:w-56 shrink-0 flex flex-col items-end border-t md:border-t-0 md:border-l border-[#1a213e] pt-3 md:pt-0 md:pl-5 space-y-3">
+                            {hasCompleted ? (
+                              <div className="w-full text-right space-y-1.5">
+                                <span
+                                  className={`inline-block px-3 py-1 rounded-full text-xs font-bold border ${
+                                    studentAttempt?.isPassed
+                                      ? 'bg-emerald-950 text-emerald-300 border-emerald-800/60'
+                                      : 'bg-rose-950 text-rose-300 border-rose-800/60'
+                                  }`}
+                                >
+                                  {studentAttempt?.isPassed ? 'PASSED' : 'FAILED'} &bull; {studentAttempt?.score} pts
+                                </span>
+                                <div className="text-[11px] text-slate-500">
+                                  Completed on {new Date(studentAttempt?.submittedAt || '').toLocaleDateString()}
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => handleStartExam(exam.id)}
+                                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 px-3 rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                              >
+                                <Timer className="w-3.5 h-3.5" />
+                                <span>Start Online Exam</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -833,10 +1009,6 @@ export default function StudentDashboardPage() {
                   onChange={(e) => setSubmissionContent(e.target.value)}
                   className="w-full bg-[#0c0e1b] border border-[#2a345e] focus:border-purple-500 rounded-xl py-2.5 px-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none transition"
                 />
-                <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                  You can update your solution any time before the instructor assigns a grade.
-                </p>
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-3 border-t border-[#21294c]">
@@ -866,6 +1038,182 @@ export default function StudentDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Online Exam Player Modal */}
+      {takingExamData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="bg-[#12162b] border border-[#2a345e] rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl relative">
+            {/* Header with Sticky Timer */}
+            <div className="p-6 pb-4 border-b border-[#21294c] flex items-center justify-between bg-[#0e1224] rounded-t-2xl">
+              <div>
+                <h3 className="font-bold text-white text-lg flex items-center gap-2">
+                  <CheckSquare className="w-5 h-5 text-purple-400" />
+                  {takingExamData.exam.title}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Answer all questions and submit before time expires.
+                </p>
+              </div>
+
+              {/* Countdown Badge */}
+              <div
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border font-mono font-bold text-sm ${
+                  countdownSeconds < 300
+                    ? 'bg-rose-950/80 border-rose-800 text-rose-300 animate-pulse'
+                    : 'bg-purple-950/80 border-purple-800 text-purple-300'
+                }`}
+              >
+                <Timer className="w-4 h-4" />
+                <span>Time Left: {formatCountdown(countdownSeconds)}</span>
+              </div>
+            </div>
+
+            {/* Questions Form */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {takingExamData.exam.questions && takingExamData.exam.questions.length > 0 ? (
+                takingExamData.exam.questions.map((q, qIdx) => (
+                  <div
+                    key={q.id}
+                    className="bg-[#0b0e1b] border border-[#222949] rounded-xl p-5 space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-sm text-white">
+                        Question {qIdx + 1} of {takingExamData.exam.questions?.length}:
+                      </span>
+                      <span className="font-mono text-xs text-purple-400 font-semibold">
+                        {q.points} pt(s)
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-200 leading-relaxed font-medium">
+                      {q.text}
+                    </p>
+
+                    <div className="space-y-2 pt-2">
+                      {q.options.map((opt) => {
+                        const isSelected = selectedAnswers[q.id] === opt.id;
+
+                        return (
+                          <label
+                            key={opt.id}
+                            className={`flex items-center gap-3 p-3 rounded-lg border text-xs cursor-pointer transition ${
+                              isSelected
+                                ? 'bg-purple-950/60 border-purple-500 text-white font-medium'
+                                : 'bg-[#12162b] border-[#1f2648] text-slate-300 hover:bg-[#171d3a]'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name={`question_${q.id}`}
+                              value={opt.id}
+                              checked={isSelected}
+                              onChange={() =>
+                                setSelectedAnswers({
+                                  ...selectedAnswers,
+                                  [q.id]: opt.id,
+                                })
+                              }
+                              className="text-purple-600 focus:ring-purple-500 bg-[#0a0c16]"
+                            />
+                            <span className="font-mono uppercase font-bold text-slate-400">
+                              {opt.id}.
+                            </span>
+                            <span>{opt.text}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="py-12 text-center text-slate-400">
+                  <p>No questions found in this exam.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Actions */}
+            <div className="p-4 px-6 border-t border-[#21294c] flex items-center justify-between bg-[#0e1224] rounded-b-2xl">
+              <span className="text-xs text-slate-400">
+                Answered: {Object.keys(selectedAnswers).length} of {takingExamData.exam.questions?.length || 0}
+              </span>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTakingExamData(null)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+                >
+                  Exit Exam
+                </button>
+                <button
+                  type="button"
+                  disabled={submittingExam}
+                  onClick={handleSubmitExam}
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold py-2 px-6 rounded-xl text-xs transition shadow-lg shadow-emerald-900/30 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {submittingExam ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Grading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Submit & Auto-Grade Exam</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Immediate Exam Result Modal */}
+      {examResultData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="bg-[#12162b] border border-[#2a345e] rounded-2xl w-full max-w-md p-6 shadow-2xl relative text-center">
+            <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center bg-purple-600/20 border border-purple-500/30">
+              {examResultData.isPassed ? (
+                <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+              ) : (
+                <AlertCircle className="w-8 h-8 text-rose-400" />
+              )}
+            </div>
+
+            <h3 className="font-extrabold text-white text-xl">
+              {examResultData.isPassed ? 'Exam Passed!' : 'Exam Completed'}
+            </h3>
+            <p className="text-xs text-slate-400 mt-1">{examResultData.message}</p>
+
+            <div className="my-6 p-4 rounded-xl bg-[#0b0e1b] border border-[#1e2547] space-y-2">
+              <div className="text-3xl font-extrabold text-white">
+                {examResultData.score} <span className="text-sm font-normal text-slate-400">/ {examResultData.totalScore} pts</span>
+              </div>
+              <span
+                className={`inline-block px-3 py-1 rounded-full text-xs font-bold border ${
+                  examResultData.isPassed
+                    ? 'bg-emerald-950 text-emerald-300 border-emerald-800/60'
+                    : 'bg-rose-950 text-rose-300 border-rose-800/60'
+                }`}
+              >
+                {examResultData.isPassed ? 'PASSED &bull; APPROVED' : 'DID NOT PASS'}
+              </span>
+              <div className="text-[11px] text-slate-500 pt-1">
+                Required passing threshold: {examResultData.passingScore} pts
+              </div>
+            </div>
+
+            <button
+              onClick={() => setExamResultData(null)}
+              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2.5 rounded-xl text-xs transition shadow-lg shadow-purple-900/30 cursor-pointer"
+            >
+              Continue Learning
+            </button>
           </div>
         </div>
       )}

@@ -17,8 +17,8 @@
 | **Phase 4** | User Management & Frontend Auth Integration | **Completed** | 2026-11-04 |
 | **Phase 5** | Course Management & Enrollment System | **Completed** | 2026-11-04 |
 | **Phase 6** | Assignments & Submissions System | **Completed** | 2026-11-04 |
-| **Phase 7** | Online Examination & Grading System | **Next Phase** | |
-| **Phase 8** | Attendance Tracking | Pending | |
+| **Phase 7** | Online Examination & Grading System | **Completed** | 2026-11-04 |
+| **Phase 8** | Attendance Tracking | **Next Phase** | |
 | **Phase 9** | Real-Time Messaging & Notifications | Pending | |
 | **Phase 10** | Live Video Meetings Integration (LiveKit) | Pending | |
 | **Phase 11** | Cloud Storage & Meeting Recordings (Google Drive) | Pending | |
@@ -167,15 +167,54 @@
 
 ---
 
-## Phase 7: Online Examination & Grading System Outline
+## Phase 7 Execution Checklist
+- [x] Expand Prisma schema with `Exam`, `Question`, and `ExamAttempt` models:
+  - `Exam` (id, courseId, title, description, durationMinutes, passingScore, totalScore, startTime, endTime, isPublished, timestamps)
+  - `Question` (id, examId, text, type, points, options Json, correctAnswer, orderIndex)
+  - `ExamAttempt` (id, examId, studentId, answers Json, score, isPassed, startedAt, submittedAt, status, @@unique([examId, studentId]))
+- [x] Execute migration `20261104170402_add_exams_and_grading` in PostgreSQL
+- [x] Regenerate Prisma Client with `ExamDelegate`, `QuestionDelegate`, and `ExamAttemptDelegate`
+- [x] Implement backend `ExamsModule`, `ExamsService`, and `ExamsController` with DTOs:
+  - `CreateExamDto` (title, description, durationMinutes, passingScore, totalScore, isPublished)
+  - `AddQuestionDto` (text, type, points, options, correctAnswer, orderIndex)
+  - `SubmitExamDto` (answers map)
+- [x] Protected endpoints with role checking and security assertions:
+  - `POST /api/v1/courses/:courseId/exams` (INSTRUCTOR owner, ADMIN only)
+  - `POST /api/v1/exams/:id/questions` (INSTRUCTOR owner, ADMIN only)
+  - `GET /api/v1/courses/:courseId/exams` (Enrolled students & Instructor)
+  - `GET /api/v1/exams/:id/take` (STUDENT only: starts attempt and strips `correctAnswer` from questions)
+  - `POST /api/v1/exams/:id/submit` (STUDENT only: evaluates student answers against keys, calculates final score, and assigns pass/fail status)
+  - `GET /api/v1/exams/:id/results` (INSTRUCTOR owner, ADMIN only: view all student attempts)
+  - `GET /api/v1/exams/:id/my-result` (STUDENT only: view personal exam score and evaluation)
+- [x] Comprehensive unit tests for `ExamsService` (11 unit tests passing, total backend tests: 43)
+- [x] Frontend Instructor Portal (`/instructor`):
+  - Added "Online Exams" management tab and course selector
+  - Added "Create New Exam" modal with duration, passing score, and publish controls
+  - Added Question Builder interface for MCQ options and answer key selection
+  - Added Exam Results modal displaying student attempts, scores, and pass/fail indicators
+- [x] Frontend Student Portal (`/student`):
+  - Added "Online Exams" tab inside the Course Portal modal
+  - Displayed exam catalog with duration, questions count, and status badges
+  - Built interactive Exam Taking interface with live countdown timer and radio selectors
+  - Built immediate Exam Result card displaying score, percentage, and passing badge
+- [x] Zero compilation errors verified for both backend (`npm run build`) and frontend (`npm run build`)
+- [x] Live automated end-to-end test verifying:
+  1. Instructor creates exam with 2 MCQ questions for CS101
+  2. Student starts exam (payload verified: answer keys securely stripped)
+  3. Student submits correct answers
+  4. Auto-grading verified: calculated 100% score, marked status as PASSED, and updated student & instructor views
+
+---
+
+## Phase 8: Attendance Tracking System Outline
 - [ ] Define Prisma models:
-  - `Exam` (id, courseId, title, description, durationMinutes, totalMarks, startTime, endTime, isPublished, createdAt, updatedAt)
-  - `Question` (id, examId, prompt, type [MCQ, SHORT_ANSWER], options, correctAnswer, marks, order)
-  - `ExamAttempt` (id, examId, studentId, answers, score, isCompleted, startedAt, submittedAt)
-- [ ] Run migration: `npx prisma migrate dev --name add_exams_and_questions`
-- [ ] Implement backend `ExamsModule` with role-based permissions:
-  - Instructor creates exams, questions, and auto-graded answer keys
-  - Student starts timed attempt and submits answers
-  - System auto-evaluates MCQ questions and records final score
-- [ ] Frontend UI for Instructor Exam Builder & Question Editor
-- [ ] Frontend UI for Student Timed Exam Player with live countdown and result viewer
+  - `AttendanceSession` (id, courseId, title, sessionDate, startTime, endTime, code, isLive, createdAt)
+  - `AttendanceRecord` (id, sessionId, studentId, status [PRESENT, ABSENT, LATE, EXCUSED], checkedInAt, @@unique([sessionId, studentId]))
+- [ ] Run migration: `npx prisma migrate dev --name add_attendance_tracking`
+- [ ] Implement backend `AttendanceModule` with role-based permissions:
+  - Instructor opens attendance session with PIN/code
+  - Student checks in using session code
+  - Instructor manually marks/adjusts student attendance
+  - Attendance summary reporting and percentage tracking per student
+- [ ] Frontend UI for Instructor Attendance Manager & Live Check-in Monitor
+- [ ] Frontend UI for Student Attendance Check-in & History Dashboard
