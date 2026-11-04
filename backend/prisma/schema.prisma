@@ -46,6 +46,7 @@ model Course {
   enrollments  Enrollment[]
   assignments  Assignment[]
   exams        Exam[]
+  liveRooms    LiveRoom[]
 
   @@map("courses")
 }
@@ -145,3 +146,17 @@ model ExamAttempt {
   @@unique([examId, studentId]) // Single attempt policy
   @@map("exam_attempts")
 }
+
+model LiveRoom {
+  id        String    @id @default(uuid())
+  courseId  String
+  course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title     String
+  roomName  String    @unique
+  isLive    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  @@map("live_rooms")
+}
+

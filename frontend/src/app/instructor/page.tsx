@@ -8,6 +8,7 @@ import { api, ApiError } from '@/lib/api';
 import { Course } from '@/types/course';
 import { Assignment, Submission } from '@/types/assignment';
 import { Exam, ExamAttempt } from '@/types/exam';
+import { LiveRoom } from '@/types/room';
 import {
   BookOpen,
   Users,
@@ -30,6 +31,9 @@ import {
   CheckSquare,
   HelpCircle,
   Eye,
+  Radio,
+  Video,
+  PhoneOff,
 } from 'lucide-react';
 
 export default function InstructorDashboardPage() {
@@ -99,6 +103,13 @@ export default function InstructorDashboardPage() {
   const [examResults, setExamResults] = useState<ExamAttempt[]>([]);
   const [loadingExamResults, setLoadingExamResults] = useState<boolean>(false);
 
+  // Live Room states
+  const [activeRooms, setActiveRooms] = useState<Record<string, LiveRoom | null>>({});
+  const [isStartLiveModalOpen, setIsStartLiveModalOpen] = useState<boolean>(false);
+  const [liveModalCourse, setLiveModalCourse] = useState<Course | null>(null);
+  const [liveSessionTitle, setLiveSessionTitle] = useState<string>('');
+  const [startingLiveSession, setStartingLiveSession] = useState<boolean>(false);
+
   const fetchTeachingCourses = useCallback(async () => {
     setLoadingData(true);
     try {
@@ -107,6 +118,20 @@ export default function InstructorDashboardPage() {
       if (data.length > 0 && !selectedCourseId) {
         setSelectedCourseId(data[0].id);
       }
+
+      // Fetch active rooms for all teaching courses
+      const roomsMap: Record<string, LiveRoom | null> = {};
+      await Promise.all(
+        data.map(async (c) => {
+          try {
+            const active = await api.get<LiveRoom | null>(`/courses/${c.id}/rooms/active`);
+            roomsMap[c.id] = active;
+          } catch {
+            roomsMap[c.id] = null;
+          }
+        }),
+      );
+      setActiveRooms(roomsMap);
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         setFeedback({ type: 'error', text: `Failed to load courses: ${err.message}` });
@@ -228,6 +253,41 @@ export default function InstructorDashboardPage() {
       setFeedback({ type: 'error', text: msg });
     } finally {
       setFormSubmitting(false);
+    }
+  };
+
+  const handleOpenStartLive = (course: Course) => {
+    setLiveModalCourse(course);
+    setLiveSessionTitle(`Live Lecture: ${course.code} - ${course.title}`);
+    setIsStartLiveModalOpen(true);
+  };
+
+  const handleStartLiveSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!liveModalCourse || !liveSessionTitle.trim()) return;
+    setStartingLiveSession(true);
+    try {
+      const newRoom = await api.post<LiveRoom>(`/courses/${liveModalCourse.id}/rooms`, {
+        title: liveSessionTitle.trim(),
+      });
+      setIsStartLiveModalOpen(false);
+      router.push(`/classroom/${newRoom.id}`);
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to start live session';
+      alert(msg);
+      setStartingLiveSession(false);
+    }
+  };
+
+  const handleEndSession = async (courseId: string, roomId: string) => {
+    if (!confirm('Are you sure you want to end this live session for all participants?')) return;
+    try {
+      await api.patch(`/rooms/${roomId}/end`);
+      setActiveRooms((prev) => ({ ...prev, [courseId]: null }));
+      setFeedback({ type: 'success', text: 'Live session ended successfully.' });
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to end live session';
+      alert(msg);
     }
   };
 
@@ -582,6 +642,34 @@ export default function InstructorDashboardPage() {
           </button>
         </div>
 
+        {/* Active Live Class Alert Banner */}
+        {Object.values(activeRooms).some((r) => r !== null) && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-950/80 via-[#181138] to-[#12162b] border border-purple-500/50 shadow-xl shadow-purple-900/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center shrink-0">
+                <Radio className="w-5 h-5 text-rose-400 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-950 border border-rose-700/60 text-rose-300 animate-pulse">
+                    Live Session In Progress
+                  </span>
+                </div>
+                <div className="text-white font-bold text-sm sm:text-base mt-0.5">
+                  {Object.values(activeRooms).find((r) => r !== null)?.title}
+                </div>
+              </div>
+            </div>
+            <Link
+              href={`/classroom/${Object.values(activeRooms).find((r) => r !== null)?.id}`}
+              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm py-2.5 px-5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-purple-900/40 cursor-pointer shrink-0"
+            >
+              <Radio className="w-4 h-4 animate-pulse" />
+              <span>Enter Live Classroom</span>
+            </Link>
+          </div>
+        )}
+
         {/* Tab 1: My Courses */}
         {activeTab === 'courses' && (
           <div>
@@ -652,6 +740,48 @@ export default function InstructorDashboardPage() {
                                 <span>Copy</span>
                               </>
                             )}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Live Classroom Controls */}
+                      {activeRooms[course.id] ? (
+                        <div className="mt-4 p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-rose-300 text-xs font-bold animate-pulse">
+                              <span className="w-2 h-2 rounded-full bg-rose-500" />
+                              <span>Live Session Active</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 truncate max-w-[120px]">
+                              {activeRooms[course.id]?.title}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Link
+                              href={`/classroom/${activeRooms[course.id]!.id}`}
+                              className="flex-1 py-1.5 px-3 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs text-center transition flex items-center justify-center gap-1.5 shadow-md shadow-purple-900/30"
+                            >
+                              <Radio className="w-3.5 h-3.5 animate-pulse" />
+                              Join Class
+                            </Link>
+                            <button
+                              onClick={() => handleEndSession(course.id, activeRooms[course.id]!.id)}
+                              className="py-1.5 px-2.5 rounded-lg bg-rose-900/40 hover:bg-rose-900/70 text-rose-200 border border-rose-700/50 text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                              title="End Live Session"
+                            >
+                              <PhoneOff className="w-3.5 h-3.5" />
+                              <span>End</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-4">
+                          <button
+                            onClick={() => handleOpenStartLive(course)}
+                            className="w-full py-2 px-3 rounded-xl bg-purple-950/40 hover:bg-purple-900/50 text-purple-200 border border-purple-500/30 text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm group"
+                          >
+                            <Radio className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition" />
+                            <span>Start Live Class</span>
                           </button>
                         </div>
                       )}
@@ -1724,6 +1854,84 @@ export default function InstructorDashboardPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+      {/* Start Live Class Modal */}
+      {isStartLiveModalOpen && liveModalCourse && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12162b] border border-[#262e52] rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+            <button
+              onClick={() => setIsStartLiveModalOpen(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-purple-600/20 border border-purple-500/40 text-purple-400 flex items-center justify-center">
+                <Radio className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Start Live Classroom</h3>
+                <p className="text-xs text-slate-400">
+                  {liveModalCourse.code} • {liveModalCourse.title}
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleStartLiveSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Session Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={liveSessionTitle}
+                  onChange={(e) => setLiveSessionTitle(e.target.value)}
+                  placeholder="e.g., Live Lecture: WebRTC Deep Dive"
+                  className="w-full bg-[#0b0e1b] border border-[#262e52] rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 transition"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-[#0b0e1b] border border-[#202747] text-xs text-slate-400 space-y-1">
+                <div className="font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  LiveKit WebRTC Classroom
+                </div>
+                <p>
+                  Enrolled students will see an active live banner and can join immediately with audio, video, and screen sharing.
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsStartLiveModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-[#181f3d] transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={startingLiveSession || !liveSessionTitle.trim()}
+                  className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold px-5 py-2 rounded-xl text-xs transition shadow-lg shadow-purple-900/40 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {startingLiveSession ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Starting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Radio className="w-3.5 h-3.5" />
+                      <span>Launch Live Class</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

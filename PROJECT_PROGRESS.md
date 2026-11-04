@@ -18,9 +18,9 @@
 | **Phase 5** | Course Management & Enrollment System | **Completed** | 2026-11-04 |
 | **Phase 6** | Assignments & Submissions System | **Completed** | 2026-11-04 |
 | **Phase 7** | Online Examination & Grading System | **Completed** | 2026-11-04 |
-| **Phase 8** | Attendance Tracking | **Next Phase** | |
-| **Phase 9** | Real-Time Messaging & Notifications | Pending | |
-| **Phase 10** | Live Video Meetings Integration (LiveKit) | Pending | |
+| **Phase 8** | Live Classrooms System (LiveKit WebRTC) | **Completed** | 2026-11-04 |
+| **Phase 9** | Attendance Tracking | Pending | |
+| **Phase 10** | Real-Time Messaging & Notifications | Pending | |
 | **Phase 11** | Cloud Storage & Meeting Recordings (Google Drive) | Pending | |
 | **Phase 12** | Polish, Audit & Production Readiness | Pending | |
 
@@ -206,9 +206,47 @@
 
 ---
 
-## Phase 8: Attendance Tracking System Outline
+## Phase 8 Execution Checklist
+- [x] Expand Prisma schema with `LiveRoom` model and relation to `Course`:
+  - `LiveRoom` (id, courseId, title, roomName @unique, isLive @default(true), createdAt, endedAt, cascade relation to Course)
+- [x] Execute migration `20261104174434_add_live_rooms` in PostgreSQL
+- [x] Regenerate Prisma Client with `LiveRoomDelegate`
+- [x] Install `livekit-server-sdk` in `backend/` and configure environment variables (`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_URL`)
+- [x] Install `@livekit/components-react`, `@livekit/components-styles`, and `livekit-client` in `frontend/`
+- [x] Configure `NEXT_PUBLIC_LIVEKIT_URL="ws://localhost:7880"` in `frontend/.env.local`
+- [x] Implement backend `RoomsModule`, `RoomsService`, and `RoomsController` with DTOs:
+  - `POST /api/v1/courses/:courseId/rooms` (INSTRUCTOR owner, ADMIN only: closes any existing active session and starts a new live room)
+  - `GET /api/v1/courses/:courseId/rooms/active` (Enrolled students & Instructor: returns currently active live room)
+  - `GET /api/v1/rooms/:roomId/token` (Generates cryptographically signed LiveKit `AccessToken` with appropriate video grants: `roomAdmin: true` for instructor, `roomAdmin: false` for students)
+  - `PATCH /api/v1/rooms/:roomId/end` (INSTRUCTOR owner, ADMIN only: sets `isLive: false` and records `endedAt`)
+  - `GET /api/v1/rooms/:roomId` (Retrieves room metadata)
+- [x] Comprehensive unit tests for `RoomsService` (15 unit tests passing, total backend tests: 58 across 7 test suites)
+- [x] Frontend Classroom View (`frontend/src/app/classroom/[roomId]/page.tsx`):
+  - Embedded `<LiveKitRoom>` with `@livekit/components-styles` and `<VideoConference>`
+  - Custom Alpha Coding dark theme styling (`#7c3aed`, `#090b14`, `#12162b`)
+  - Real-time live status indicator badge, course info, and user role identification
+  - Host controls: "End Live Session for Everyone" button for instructors and admins
+  - Clean error boundaries and "Back to Dashboard" fallback handlers
+- [x] Frontend Instructor Portal (`/instructor`):
+  - Added live session status & controls on course cards (Start Live Class modal, active pulsing badge, Join and End buttons)
+  - Added global top banner alerting instructor of any active live sessions
+- [x] Frontend Student Portal (`/student`):
+  - Added real-time live alert banner for enrolled courses with one-click "Join Live Session" routing
+  - Added live indicator badge and direct join button on enrolled course cards
+- [x] Zero compilation errors verified for both backend (`npm run build`) and frontend (`npm run build`)
+- [x] Live automated end-to-end test (`scratch/test_phase8_livekit.ps1`):
+  1. Instructor launches live room for course CS101
+  2. Enrolled student discovers active room and requests signed LiveKit JWT token
+  3. Instructor requests admin LiveKit token
+  4. Un-enrolled user verified rejected with 403 Forbidden
+  5. Instructor ends room (isLive: false, endedAt recorded)
+  6. Subsequent token requests for ended room verified rejected with 400 Bad Request
+
+---
+
+## Phase 9: Attendance Tracking System Outline
 - [ ] Define Prisma models:
-  - `AttendanceSession` (id, courseId, title, sessionDate, startTime, endTime, code, isLive, createdAt)
+  - `AttendanceSession` (id, courseId, liveRoomId?, title, sessionDate, startTime, endTime, code, isLive, createdAt)
   - `AttendanceRecord` (id, sessionId, studentId, status [PRESENT, ABSENT, LATE, EXCUSED], checkedInAt, @@unique([sessionId, studentId]))
 - [ ] Run migration: `npx prisma migrate dev --name add_attendance_tracking`
 - [ ] Implement backend `AttendanceModule` with role-based permissions:

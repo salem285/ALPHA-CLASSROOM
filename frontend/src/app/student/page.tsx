@@ -8,6 +8,7 @@ import { api, ApiError } from '@/lib/api';
 import { Course, Enrollment } from '@/types/course';
 import { Assignment } from '@/types/assignment';
 import { Exam, ExamAttempt } from '@/types/exam';
+import { LiveRoom } from '@/types/room';
 import {
   GraduationCap,
   BookOpen,
@@ -32,6 +33,8 @@ import {
   CheckSquare,
   Timer,
   Check,
+  Radio,
+  Video,
 } from 'lucide-react';
 
 export default function StudentDashboardPage() {
@@ -83,6 +86,9 @@ export default function StudentDashboardPage() {
     passingScore: number;
   } | null>(null);
 
+  // Live Room states
+  const [activeRooms, setActiveRooms] = useState<Record<string, LiveRoom | null>>({});
+
   const fetchStudentData = useCallback(async () => {
     setLoadingData(true);
     try {
@@ -92,6 +98,20 @@ export default function StudentDashboardPage() {
       ]);
       setEnrolledList(enrolled);
       setCatalog(available);
+
+      // Fetch active live rooms for enrolled courses
+      const roomsMap: Record<string, LiveRoom | null> = {};
+      await Promise.all(
+        enrolled.map(async (item) => {
+          try {
+            const active = await api.get<LiveRoom | null>(`/courses/${item.courseId}/rooms/active`);
+            roomsMap[item.courseId] = active;
+          } catch {
+            roomsMap[item.courseId] = null;
+          }
+        }),
+      );
+      setActiveRooms(roomsMap);
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         setFeedback({ type: 'error', text: `Failed to load courses: ${err.message}` });
@@ -485,6 +505,34 @@ export default function StudentDashboardPage() {
           </button>
         </div>
 
+        {/* Active Live Class Alert Banner */}
+        {Object.values(activeRooms).some((r) => r !== null) && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-950/80 via-[#181138] to-[#12162b] border border-purple-500/50 shadow-xl shadow-purple-900/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center shrink-0">
+                <Radio className="w-5 h-5 text-rose-400 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-rose-950 border border-rose-700/60 text-rose-300 animate-pulse">
+                    Live Classroom Active
+                  </span>
+                </div>
+                <div className="text-white font-bold text-sm sm:text-base mt-0.5">
+                  {Object.values(activeRooms).find((r) => r !== null)?.title}
+                </div>
+              </div>
+            </div>
+            <Link
+              href={`/classroom/${Object.values(activeRooms).find((r) => r !== null)?.id}`}
+              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm py-2.5 px-5 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-purple-900/40 cursor-pointer shrink-0"
+            >
+              <Radio className="w-4 h-4 animate-pulse" />
+              <span>Join Live Session</span>
+            </Link>
+          </div>
+        )}
+
         {/* Tab 1: My Enrolled Courses */}
         {activeTab === 'my' && (
           <div>
@@ -534,6 +582,28 @@ export default function StudentDashboardPage() {
                           {item.course?.instructor?.firstName} {item.course?.instructor?.lastName}
                         </div>
                       </div>
+
+                      {/* Active Live Session in Enrolled Course */}
+                      {activeRooms[item.courseId] && (
+                        <div className="mt-4 p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-rose-300 text-xs font-bold animate-pulse">
+                              <span className="w-2 h-2 rounded-full bg-rose-500" />
+                              <span>Live Session Active</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 truncate max-w-[120px]">
+                              {activeRooms[item.courseId]?.title}
+                            </span>
+                          </div>
+                          <Link
+                            href={`/classroom/${activeRooms[item.courseId]!.id}`}
+                            className="mt-1 py-1.5 px-3 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs text-center transition flex items-center justify-center gap-1.5 shadow-md shadow-purple-900/30 cursor-pointer"
+                          >
+                            <Radio className="w-3.5 h-3.5 animate-pulse" />
+                            <span>Join Live Session</span>
+                          </Link>
+                        </div>
+                      )}
                     </div>
 
                     <div className="mt-5 pt-4 border-t border-[#1c223c] flex items-center justify-between text-xs">
