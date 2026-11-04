@@ -136,7 +136,7 @@ export default function Home() {
                 <div className="flex items-center gap-2 text-xs text-slate-400 font-medium">
                   <Laptop className="w-3.5 h-3.5 text-purple-400" /> Frontend Client
                 </div>
-                <div className="text-sm font-bold text-white mt-1">Port 3000</div>
+                <div className="text-sm font-bold text-white mt-1">Port 3001</div>
                 <div className="text-xs text-emerald-400 mt-1">Next.js 16 + Tailwind</div>
               </div>
               <div className="p-4 rounded-xl bg-[#0b0e1b] border border-[#1d233f]">
