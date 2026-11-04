@@ -39,3 +39,8 @@ Thumbs.db
 # Testing & Coverage
 coverage/
 .nyc_output/
+
+# Binaries & Tools
+tools/
+*.exe
+
