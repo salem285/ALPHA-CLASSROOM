@@ -14,16 +14,15 @@
 | **Phase 1** | Project Scaffolding, Base Monorepo & Health Check | **Completed** | 2026-11-04 |
 | **Phase 2** | Database Configuration, Prisma Schema & Migrations | **Completed** | 2026-11-04 |
 | **Phase 3** | Authentication & RBAC Core (JWT, User Approval System) | **Completed** | 2026-11-04 |
-| **Phase 4** | Frontend Auth & Role Dashboard Shells | **Next Phase** | |
-| **Phase 5** | User Management & Admin Approval Workflow | Pending | |
-| **Phase 6** | Course Management & Enrollment System | Pending | |
-| **Phase 7** | Assignments & Submissions System | Pending | |
-| **Phase 8** | Online Examination & Grading System | Pending | |
-| **Phase 9** | Attendance Tracking | Pending | |
-| **Phase 10** | Real-Time Messaging & Notifications | Pending | |
-| **Phase 11** | Live Video Meetings Integration (LiveKit) | Pending | |
-| **Phase 12** | Cloud Storage & Meeting Recordings (Google Drive) | Pending | |
-| **Phase 13** | Polish, Audit & Production Readiness | Pending | |
+| **Phase 4** | User Management & Frontend Auth Integration | **Completed** | 2026-11-04 |
+| **Phase 5** | Course Management & Enrollment System | **Next Phase** | |
+| **Phase 6** | Assignments & Submissions System | Pending | |
+| **Phase 7** | Online Examination & Grading System | Pending | |
+| **Phase 8** | Attendance Tracking | Pending | |
+| **Phase 9** | Real-Time Messaging & Notifications | Pending | |
+| **Phase 10** | Live Video Meetings Integration (LiveKit) | Pending | |
+| **Phase 11** | Cloud Storage & Meeting Recordings (Google Drive) | Pending | |
+| **Phase 12** | Polish, Audit & Production Readiness | Pending | |
 
 ---
 
@@ -78,15 +77,39 @@
 
 ---
 
-## Phase 4: Frontend Auth & Role Dashboard Shells Outline
-- [ ] Create API client service in `frontend/` (Axios / Fetch with bearer token attachment)
-- [ ] Implement Auth Context and custom hooks (`useAuth`, `useRole`)
-- [ ] Build User Login Page (`frontend/src/app/(auth)/login/page.tsx`)
-- [ ] Build User Registration Page (`frontend/src/app/(auth)/register/page.tsx`) with feedback on pending approval
-- [ ] Implement Client-side & Middleware Route Guards
-- [ ] Scaffold Role-Based Dashboard Layouts & Shells:
-  - Super Admin / Admin Dashboard (`/admin`)
-  - Instructor Dashboard (`/instructor`)
-  - Student Dashboard (`/student`)
-- [ ] Dynamic Header / Navigation with User Profile & Logout
-- [ ] Verify End-to-End browser flow: Login -> Role Redirect -> Dashboard Shell
+## Phase 4 Execution Checklist
+- [x] Build backend `UsersModule`, `UsersService`, and `UsersController`
+- [x] Implement protected user management endpoints (`JwtAuthGuard`, `RolesGuard` for `SUPER_ADMIN`, `ADMIN`):
+  - `GET /api/v1/users` (list all users, with role & isApproved filter queries)
+  - `GET /api/v1/users/pending` (list users where `isApproved === false`)
+  - `PATCH /api/v1/users/:id/approve` (sets `isApproved: true`)
+  - `PATCH /api/v1/users/:id/reject` & `DELETE /api/v1/users/:id` (removes unapproved applicant)
+- [x] Comprehensive unit tests for `UsersService` (5 unit tests passing)
+- [x] Build frontend API client utility (`frontend/src/lib/api.ts`) with automatic Bearer token attachment
+- [x] Implement `AuthContext` and `useAuth` hook managing token persistence, user profile, login, registration, and logout
+- [x] Build branded UI pages matching Alpha Coding theme (dark purple `#7c3aed` & navy `#090b14`):
+  - `/login` (interactive sign-in with 403 pending-approval error guidance and admin quick-fill)
+  - `/register` (name, email, password, role selection with administrative review notice)
+  - `/pending-approval` (verification status page informing applicant of pending review)
+- [x] Build role-based dashboard shells:
+  - `/admin` (management overview, pending approvals table with live Approve/Reject actions, all users directory)
+  - `/instructor` (instructor portal shell with course, live class, and grading modules)
+  - `/student` (student portal shell with course enrollment, assignments, and exam grades)
+- [x] Verify zero build errors for both backend (`npm run build`) and frontend (`npm run build`)
+- [x] Live end-to-end testing of user registration -> 403 block -> admin approval -> successful login -> profile access
+
+---
+
+## Phase 5: Course Management & Enrollment System Outline
+- [ ] Define Prisma Course & Enrollment models:
+  - `Course` (id, title, description, code, instructorId, isActive, createdAt, updatedAt)
+  - `Enrollment` (id, courseId, studentId, enrolledAt, status)
+- [ ] Execute database migration (`npx prisma migrate dev --name add_courses`)
+- [ ] Implement backend `CoursesModule`, `CoursesService`, and `CoursesController`:
+  - `POST /api/v1/courses` (Instructor/Admin course creation)
+  - `GET /api/v1/courses` (Public / authenticated course catalog)
+  - `GET /api/v1/courses/:id` (Course details with instructor info)
+  - `POST /api/v1/courses/:id/enroll` (Student enrollment)
+  - `GET /api/v1/courses/my/teaching` (Instructor's assigned courses)
+  - `GET /api/v1/courses/my/enrolled` (Student's enrolled courses)
+- [ ] Build Frontend Course catalog, Instructor Course Creation form, and Student Enrollment views
