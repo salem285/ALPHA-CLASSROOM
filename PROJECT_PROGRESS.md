@@ -16,8 +16,8 @@
 | **Phase 3** | Authentication & RBAC Core (JWT, User Approval System) | **Completed** | 2026-11-04 |
 | **Phase 4** | User Management & Frontend Auth Integration | **Completed** | 2026-11-04 |
 | **Phase 5** | Course Management & Enrollment System | **Completed** | 2026-11-04 |
-| **Phase 6** | Assignments & Submissions System | **Next Phase** | |
-| **Phase 7** | Online Examination & Grading System | Pending | |
+| **Phase 6** | Assignments & Submissions System | **Completed** | 2026-11-04 |
+| **Phase 7** | Online Examination & Grading System | **Next Phase** | |
 | **Phase 8** | Attendance Tracking | Pending | |
 | **Phase 9** | Real-Time Messaging & Notifications | Pending | |
 | **Phase 10** | Live Video Meetings Integration (LiveKit) | Pending | |
@@ -132,15 +132,50 @@
 
 ---
 
-## Phase 6: Assignments & Submissions System Outline
-- [ ] Define Prisma models:
+## Phase 6 Execution Checklist
+- [x] Expand Prisma schema with `Assignment` and `Submission` models:
   - `Assignment` (id, courseId, title, description, dueDate, maxScore, createdAt, updatedAt)
-  - `Submission` (id, assignmentId, studentId, content/fileUrl, score, feedback, submittedAt, gradedAt)
-- [ ] Run migration: `npx prisma migrate dev --name add_assignments_and_submissions`
-- [ ] Implement backend `AssignmentsModule` with role-based permissions:
-  - Instructor creates assignment for their course
-  - Student views assignments for enrolled courses
-  - Student submits work
-  - Instructor grades submission and provides feedback
-- [ ] Frontend UI for Instructor Assignment Creator & Grading Panel
-- [ ] Frontend UI for Student Assignment Submission & Grade Viewer
+  - `Submission` (id, assignmentId, studentId, content, score, feedback, status, submittedAt, gradedAt, @@unique([assignmentId, studentId]))
+- [x] Execute migration `20261104164031_add_assignments_and_submissions` in PostgreSQL
+- [x] Regenerate Prisma Client with `AssignmentDelegate` and `SubmissionDelegate`
+- [x] Implement backend `AssignmentsModule`, `AssignmentsService`, and `AssignmentsController` with DTOs:
+  - `CreateAssignmentDto` (title, description, dueDate, maxScore)
+  - `SubmitAssignmentDto` (content)
+  - `GradeSubmissionDto` (score, feedback)
+- [x] Protected endpoints with role checking and course ownership verification:
+  - `POST /api/v1/courses/:courseId/assignments` (INSTRUCTOR owner, ADMIN only)
+  - `GET /api/v1/courses/:courseId/assignments` (Course instructor or enrolled students only)
+  - `POST /api/v1/assignments/:id/submit` (STUDENT only, verify student is enrolled in parent course)
+  - `GET /api/v1/assignments/:id/submissions` (INSTRUCTOR owner, ADMIN only)
+  - `PATCH /api/v1/submissions/:id/grade` (INSTRUCTOR owner, ADMIN only)
+- [x] Comprehensive unit tests for `AssignmentsService` (12 unit tests passing, total backend tests: 32)
+- [x] Frontend Instructor Portal (`/instructor`):
+  - Added "Assignments & Grading" management tab and course selector
+  - Added "Create Assignment" modal with title, description, max score, and optional due date
+  - Added Submissions viewer & grading modal with student work, solution link/text viewer, score input, feedback input, and live grading
+- [x] Frontend Student Portal (`/student`):
+  - Added "View Coursework" button on enrolled course cards
+  - Added interactive Coursework viewer modal displaying all course assignments
+  - Added "Submit Assignment" modal supporting solution link or text
+  - Displayed real-time submission status badges, numerical score, and instructor feedback when graded
+- [x] Zero compilation errors verified for both backend (`npm run build`) and frontend (`npm run build`)
+- [x] Live automated end-to-end test verifying:
+  1. Instructor creates assignment for course CS101
+  2. Enrolled student submits solution link
+  3. Instructor reviews and grades submission (score + feedback)
+  4. Student retrieves the graded assignment with score and feedback verified
+
+---
+
+## Phase 7: Online Examination & Grading System Outline
+- [ ] Define Prisma models:
+  - `Exam` (id, courseId, title, description, durationMinutes, totalMarks, startTime, endTime, isPublished, createdAt, updatedAt)
+  - `Question` (id, examId, prompt, type [MCQ, SHORT_ANSWER], options, correctAnswer, marks, order)
+  - `ExamAttempt` (id, examId, studentId, answers, score, isCompleted, startedAt, submittedAt)
+- [ ] Run migration: `npx prisma migrate dev --name add_exams_and_questions`
+- [ ] Implement backend `ExamsModule` with role-based permissions:
+  - Instructor creates exams, questions, and auto-graded answer keys
+  - Student starts timed attempt and submits answers
+  - System auto-evaluates MCQ questions and records final score
+- [ ] Frontend UI for Instructor Exam Builder & Question Editor
+- [ ] Frontend UI for Student Timed Exam Player with live countdown and result viewer
