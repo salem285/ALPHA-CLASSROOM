@@ -15,15 +15,45 @@ enum UserRole {
 }
 
 model User {
-  id         String   @id @default(uuid())
-  email      String   @unique
-  password   String
-  firstName  String
-  lastName   String
-  role       UserRole @default(STUDENT)
-  isApproved Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                String       @id @default(uuid())
+  email             String       @unique
+  password          String
+  firstName         String
+  lastName          String
+  role              UserRole     @default(STUDENT)
+  isApproved        Boolean      @default(false)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  instructedCourses Course[]     @relation("InstructedCourses")
+  enrollments       Enrollment[] @relation("StudentEnrollments")
 
   @@map("users")
+}
+
+model Course {
+  id           String       @id @default(uuid())
+  title        String
+  code         String       @unique
+  description  String?
+  instructorId String
+  instructor   User         @relation("InstructedCourses", fields: [instructorId], references: [id])
+  isPublished  Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  enrollments  Enrollment[]
+
+  @@map("courses")
+}
+
+model Enrollment {
+  id         String   @id @default(uuid())
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  studentId  String
+  student    User     @relation("StudentEnrollments", fields: [studentId], references: [id], onDelete: Cascade)
+  status     String   @default("ACTIVE")
+  enrolledAt DateTime @default(now())
+
+  @@unique([courseId, studentId])
+  @@map("enrollments")
 }

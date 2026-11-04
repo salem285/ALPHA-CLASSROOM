@@ -15,8 +15,8 @@
 | **Phase 2** | Database Configuration, Prisma Schema & Migrations | **Completed** | 2026-11-04 |
 | **Phase 3** | Authentication & RBAC Core (JWT, User Approval System) | **Completed** | 2026-11-04 |
 | **Phase 4** | User Management & Frontend Auth Integration | **Completed** | 2026-11-04 |
-| **Phase 5** | Course Management & Enrollment System | **Next Phase** | |
-| **Phase 6** | Assignments & Submissions System | Pending | |
+| **Phase 5** | Course Management & Enrollment System | **Completed** | 2026-11-04 |
+| **Phase 6** | Assignments & Submissions System | **Next Phase** | |
 | **Phase 7** | Online Examination & Grading System | Pending | |
 | **Phase 8** | Attendance Tracking | Pending | |
 | **Phase 9** | Real-Time Messaging & Notifications | Pending | |
@@ -35,11 +35,11 @@
 - [x] Configure backend to run on port `4000` with global prefix `api/v1`
 - [x] Implement `GET /api/v1/health` endpoint on backend
 - [x] Initialize Next.js frontend in `frontend/` (App Router, TypeScript, Tailwind CSS)
-- [x] Configure frontend to run on port `3000`
+- [x] Configure frontend to run on port `3001`
 - [x] Create frontend verification page confirming ALPHA CLASSROOM is running
 - [x] Verify TypeScript compilation for backend & frontend
 - [x] Test backend health endpoint (`http://localhost:4000/api/v1/health` -> HTTP 200)
-- [x] Test frontend page (`http://localhost:3000` -> HTTP 200)
+- [x] Test frontend page (`http://localhost:3001` -> HTTP 200)
 
 ---
 
@@ -100,16 +100,35 @@
 
 ---
 
-## Phase 5: Course Management & Enrollment System Outline
-- [ ] Define Prisma Course & Enrollment models:
-  - `Course` (id, title, description, code, instructorId, isActive, createdAt, updatedAt)
-  - `Enrollment` (id, courseId, studentId, enrolledAt, status)
-- [ ] Execute database migration (`npx prisma migrate dev --name add_courses`)
-- [ ] Implement backend `CoursesModule`, `CoursesService`, and `CoursesController`:
-  - `POST /api/v1/courses` (Instructor/Admin course creation)
-  - `GET /api/v1/courses` (Public / authenticated course catalog)
-  - `GET /api/v1/courses/:id` (Course details with instructor info)
-  - `POST /api/v1/courses/:id/enroll` (Student enrollment)
-  - `GET /api/v1/courses/my/teaching` (Instructor's assigned courses)
-  - `GET /api/v1/courses/my/enrolled` (Student's enrolled courses)
-- [ ] Build Frontend Course catalog, Instructor Course Creation form, and Student Enrollment views
+## Phase 5 Execution Checklist
+- [x] Expand Prisma schema with `Course` and `Enrollment` models with cascade deletion and unique constraints
+- [x] Execute migration `20261104133245_add_courses_and_enrollments` in PostgreSQL
+- [x] Regenerate Prisma Client with `CourseDelegate` and `EnrollmentDelegate`
+- [x] Implement backend `CoursesModule`, `CoursesService`, and `CoursesController` with DTOs (`CreateCourseDto`, `UpdateCourseDto`)
+- [x] Protected endpoints with role checking:
+  - `POST /api/v1/courses` (Instructor/Admin course creation with auto-assigned instructor)
+  - `GET /api/v1/courses` (Public / active student course catalog with instructor profile and enrollment counters)
+  - `GET /api/v1/courses/:id` (Detailed course lookup)
+  - `POST /api/v1/courses/:id/enroll` (Student course enrollment with duplicate prevention)
+  - `GET /api/v1/courses/my/teaching` (Instructor's teaching courses with live enrollment counts)
+  - `GET /api/v1/courses/my/enrolled` (Student's enrolled courses with instructor details)
+- [x] Comprehensive unit tests for `CoursesService` (6 unit tests passing, total backend tests: 17)
+- [x] Enhance `/instructor` page with Course Creation Modal and interactive teaching courses grid
+- [x] Enhance `/student` page with "My Enrolled Courses" tab, "Course Catalog" tab, and one-click "Enroll Now" functionality
+- [x] Zero compilation errors verified for frontend (`npm run build`) and backend (`npm run build`)
+- [x] Live automated end-to-end test of course creation, student enrollment, duplicate prevention (409), and teaching counters
+
+---
+
+## Phase 6: Assignments & Submissions System Outline
+- [ ] Define Prisma models:
+  - `Assignment` (id, courseId, title, description, dueDate, maxScore, createdAt, updatedAt)
+  - `Submission` (id, assignmentId, studentId, content/fileUrl, score, feedback, submittedAt, gradedAt)
+- [ ] Run migration: `npx prisma migrate dev --name add_assignments_and_submissions`
+- [ ] Implement backend `AssignmentsModule` with role-based permissions:
+  - Instructor creates assignment for their course
+  - Student views assignments for enrolled courses
+  - Student submits work
+  - Instructor grades submission and provides feedback
+- [ ] Frontend UI for Instructor Assignment Creator & Grading Panel
+- [ ] Frontend UI for Student Assignment Submission & Grade Viewer
