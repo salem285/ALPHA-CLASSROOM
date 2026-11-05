@@ -1,0 +1,106 @@
+services:
+  # ============================================================================
+  # 1. PostgreSQL Database Service (PostgreSQL 18)
+  # ============================================================================
+  postgres:
+    image: postgres:18-alpine
+    container_name: alpha-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-alpha_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-AlphaPostgres2026!}
+      POSTGRES_DB: ${POSTGRES_DB:-alpha_classroom_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-alpha_user} -d ${POSTGRES_DB:-alpha_classroom_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - alpha-network
+
+  # ============================================================================
+  # 2. LiveKit Real-Time WebRTC Media Server
+  # ============================================================================
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: alpha-livekit
+    restart: always
+    command: --dev --bind 0.0.0.0 --keys "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-secret}"
+    ports:
+      - "7880:7880"             # HTTP & WebSocket signaling
+      - "7881:7881"             # WebRTC TCP fallback
+      - "7882:7882/udp"         # WebRTC UDP media
+      - "50000-50050:50000-50050/udp" # WebRTC ICE UDP media stream ports
+    environment:
+      - LIVEKIT_KEYS=${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-secret}
+    networks:
+      - alpha-network
+
+  # ============================================================================
+  # 3. ALPHA CLASSROOM NestJS API Backend
+  # ============================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: alpha-backend
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-alpha_user}:${POSTGRES_PASSWORD:-AlphaPostgres2026!}@postgres:5432/${POSTGRES_DB:-alpha_classroom_db}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-alpha_production_jwt_secret_key_change_me_2026!}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-7d}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000,http://localhost:3001}
+      LIVEKIT_URL: ${LIVEKIT_INTERNAL_URL:-http://livekit:7880}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
+    ports:
+      - "4000:4000"
+    volumes:
+      - backend_recordings:/app/uploads/recordings
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - alpha-network
+
+  # ============================================================================
+  # 4. Next.js 16 Web Application Frontend
+  # ============================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api/v1}
+        NEXT_PUBLIC_LIVEKIT_URL: ${NEXT_PUBLIC_LIVEKIT_URL:-ws://localhost:7880}
+    container_name: alpha-frontend
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - alpha-network
+
+# ============================================================================
+# Persistent Named Volumes & Network Definition
+# ============================================================================
+volumes:
+  pgdata:
+    driver: local
+  backend_recordings:
+    driver: local
+
+networks:
+  alpha-network:
+    driver: bridge

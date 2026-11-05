@@ -9,15 +9,17 @@ export class AppService {
 
   async getHealth() {
     const dbStatus = await this.prisma.isHealthy();
+    const isUp = dbStatus.isConnected;
 
     return {
-      status: dbStatus.isConnected ? 'ok' : 'degraded',
+      status: isUp ? 'ok' : 'degraded',
       service: 'ALPHA CLASSROOM Backend API',
       version: '1.0.0',
       timestamp: new Date().toISOString(),
-      uptime: (Date.now() - this.startTime) / 1000,
+      uptime: Math.floor((Date.now() - this.startTime) / 1000),
       database: {
-        status: dbStatus.isConnected ? 'connected' : 'disconnected',
+        status: isUp ? 'up' : 'down',
+        connected: isUp,
         provider: 'postgresql',
         ...(dbStatus.error ? { message: dbStatus.error } : {}),
       },

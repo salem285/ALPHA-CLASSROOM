@@ -26,11 +26,14 @@ describe('AppController', () => {
   });
 
   describe('health', () => {
-    it('should return health object with status ok and database connected', async () => {
+    it('should return health object with status ok and database up', async () => {
       const health = await appController.getHealth();
       expect(health.status).toBe('ok');
       expect(health.service).toBe('ALPHA CLASSROOM Backend API');
-      expect(health.database.status).toBe('connected');
+      expect(health.database.status).toBe('up');
+      expect(health.database.connected).toBe(true);
+      expect(health.uptime).toBeDefined();
+      expect(health.timestamp).toBeDefined();
     });
   });
 });

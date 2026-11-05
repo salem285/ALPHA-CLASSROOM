@@ -22,7 +22,7 @@
 | **Phase 9** | Automated Classroom Attendance Tracking & Analytics | **Completed** | 2026-11-05 |
 | **Phase 10** | Course Announcements, Discussion Q&A & Notifications | **Completed** | 2026-11-05 |
 | **Phase 11** | Session Recording & Lecture Archive System | **Completed** | 2026-11-05 |
-| **Phase 12** | Polish, Audit & Production Readiness | Pending | |
+| **Phase 12** | Polish, Security Audit & Production Readiness | **Completed** | 2026-11-05 |
 
 ---
 
@@ -366,3 +366,41 @@
   4. Student retrieves course recordings list
   5. Verified HTTP 206 Partial Content range request streaming
   6. Instructor deletes recording (file unlinked and removed from database)
+
+---
+
+## Phase 12 Execution Checklist
+- [x] Security Hardening in NestJS Backend (`backend/`):
+  - Installed and configured `helmet` in `backend/src/main.ts` with `crossOriginResourcePolicy: { policy: 'cross-origin' }` and `crossOriginEmbedderPolicy: false` to protect headers while permitting cross-origin lecture video streaming
+  - Installed and configured `@nestjs/throttler` (v6) in `app.module.ts`:
+    * Global rate limiter: 100 requests per 60 seconds (`ttl: 60000`, `limit: 100`) via `APP_GUARD` and `ThrottlerGuard`
+    * Stricter rate limits on authentication endpoints in `auth.controller.ts` (`/login` and `/register` limited to 10 requests per minute)
+    * Rate limit bypassed on `/health` endpoint using `@SkipThrottle()`
+  - Configured dynamic and strict CORS policies in `main.ts` utilizing `FRONTEND_URL` environment variable with explicit allowed/exposed headers (`Range`, `Content-Range`, `Accept-Ranges`, `Authorization`)
+  - Enhanced health check endpoint (`GET /api/v1/health`) returning PostgreSQL database connectivity status (`database: { status: 'up', connected: true }`), server uptime in seconds, system ISO timestamp, and API version
+- [x] Production Containerization & Dockerfile Scaffolding:
+  - Created multi-stage `backend/Dockerfile` using `node:22-alpine`:
+    * Builder stage with OpenSSL and libc6-compat for Prisma engine compilation, `npm ci`, `prisma generate`, `nest build`, and devDependencies pruning
+    * Production runner stage with non-root `nestjs` user (UID 1001), automatic `prisma migrate deploy`, persistent uploads volume mount, and exposed port 4000
+  - Created multi-stage `frontend/Dockerfile` using `node:22-alpine`:
+    * Enabled `output: 'standalone'` in `frontend/next.config.ts`
+    * Builder stage accepting `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_LIVEKIT_URL` build arguments
+    * Production runner stage copying `.next/standalone`, `.next/static`, and `public` with non-root `nextjs` user, exposing port 3000
+  - Created `.dockerignore` for both `backend/` and `frontend/` excluding local `node_modules`, `dist`, `.next`, and logs
+  - Created root `docker-compose.yml` orchestrating:
+    * `postgres`: PostgreSQL 18 Alpine (`postgres:18-alpine`) with healthcheck and persistent volume `pgdata:/var/lib/postgresql`
+    * `livekit`: Official `livekit/livekit-server:latest` with WebRTC signaling (7880), TCP fallback (7881), and UDP ICE media ports (7882, 50000-50050)
+    * `backend`: NestJS production container with healthcheck dependency on postgres, persistent recordings volume, and port 4000
+    * `frontend`: Next.js 16 standalone web app with dependency on backend and port 3000
+  - Created comprehensive `.env.production.example` templates in root, `backend/`, and `frontend/` documenting all production secrets and endpoints
+- [x] Production Deployment Documentation:
+  - Created `DEPLOYMENT.md` detailing step-by-step instructions for Ubuntu 22.04/24.04 LTS VPS deployment
+  - Documented UFW firewall rules, Docker & Docker Compose setup, database migration & seeding commands
+  - Provided full production Nginx virtual host configuration with WebSocket upgrades (`map $http_upgrade $connection_upgrade`), HTTP 206 Partial Content range forwarding for video streaming, and 1GB upload limits
+  - Documented Certbot automated Let's Encrypt SSL issuance and auto-renewal
+  - Documented automated daily PostgreSQL database backups via crontab and zero-downtime rolling update instructions
+- [x] Verification & Integrity Checks:
+  - All 87 unit tests passed across 10 test suites (`vitest run` in `backend`)
+  - Production builds compiled with 0 errors for both backend (`npm run build`) and frontend Next.js standalone (`npm run build`)
+  - Live HTTP query verified `GET /api/v1/health` returning valid JSON with `database: { status: "up" }`
+  - Automated E2E verification confirmed Phase 10 discussion and announcements flow still passes 100% with helmet and throttler active
