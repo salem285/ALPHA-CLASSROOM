@@ -57,6 +57,7 @@ import { DiscussionPost } from '@/types/discussion';
 import { CourseMaterial } from '@/types/material';
 import NotificationsPopover from '@/components/notifications-popover';
 import ProfileModal from '@/components/profile-modal';
+import VideoWatermark from '@/components/video-watermark';
 
 export default function InstructorDashboardPage() {
   const router = useRouter();
@@ -3241,11 +3242,12 @@ export default function InstructorDashboardPage() {
               </button>
             </div>
 
-            <div className="p-4 bg-black flex items-center justify-center">
+            <div className="p-4 bg-black flex items-center justify-center relative overflow-hidden">
+              <VideoWatermark />
               <video
                 controls
                 autoPlay
-                className="w-full max-h-[60vh] rounded-lg shadow-lg"
+                className="w-full max-h-[60vh] rounded-lg shadow-lg relative z-10"
                 src={getRecordingStreamUrl(activeRecordingForPlayback)}
               >
                 Your browser does not support video playback.

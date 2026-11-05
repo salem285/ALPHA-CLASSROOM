@@ -25,6 +25,7 @@
 | **Phase 12** | Polish, Security Audit & Production Readiness | **Completed** | 2026-11-05 |
 | **Phase 13** | Course Materials Library, Student Progress & CSV Export | **Completed** | 2026-11-05 |
 | **Phase 14** | Email SMTP Service, Password Reset & Profile Management | **Completed** | 2026-11-05 |
+| **Phase 15** | Verifiable PDF Certificates with QR & Anti-Piracy Watermarking | **Completed** | 2026-11-05 |
 
 ---
 
@@ -500,3 +501,66 @@
     8. Static avatar URL verified (HTTP 200 OK)
     9. Password changed back to standard `Alpha@2026!` via authenticated endpoint
     10. Standard student login verified with `Alpha@2026!`
+
+---
+
+## Phase 15 Execution Checklist
+- [x] Database Schema Expansion (`backend/prisma/schema.prisma`):
+  - Added `Certificate` model:
+    * `id (String @id @default(uuid()))`
+    * `certificateCode (String @unique)` (e.g. `ALPHA-CERT-[TIMESTAMP]-[HASH]`)
+    * `courseId (String -> Course cascade)`
+    * `studentId (String -> User cascade)`
+    * `issuedAt (DateTime @default(now()))`
+    * `gradePercentage (Float)`
+    * `pdfUrl (String?)`
+    * Unique constraint: `@@unique([courseId, studentId])` ensuring one certificate per course per student
+  - Updated `User` and `Course` models with relations to `Certificate[]`
+  - Applied database migration `20261105142704_add_certificates` and regenerated Prisma Client
+- [x] Backend Implementation:
+  - Installed `pdfkit`, `qrcode`, and TypeScript definitions (`@types/pdfkit`, `@types/qrcode`)
+  - Configured static certificate file directory: `uploads/certificates`
+  - Created Certificates Module (`backend/src/modules/certificates`):
+    * `POST /api/v1/courses/:courseId/certificates/claim` (STUDENT):
+      - Validates student has completed the course with an overall progress score >= 80% (using 40% HW + 40% Exams + 20% Attendance formula)
+      - Returns 400 Bad Request if progress < 80%
+      - Enforces uniqueness: returns 409 Conflict if certificate has already been claimed
+      - Generates custom high-resolution landscape A4 PDF certificate using `pdfkit` featuring Alpha Coding branding, student full name, course title and code, issue date, lead instructor signature, and academic honors standing
+      - Generates and embeds high-precision QR Code linking directly to the public verification portal
+      - Saves generated PDF in `uploads/certificates/` and creates DB record
+    * `GET /api/v1/courses/:courseId/certificates/my-certificate` (STUDENT):
+      - Returns student certificate details if claimed, or eligibility status (`isEligible`, `currentProgress`, `requiredProgress: 80`)
+    * `GET /api/v1/certificates/verify/:certificateCode` (PUBLIC):
+      - Public endpoint returning verified credential data: Student Name, Course Title, Course Code, Instructor Name, Issue Date, Grade Score, and `isValid: true`
+    * `GET /api/v1/certificates/download/:certificateCode` (PUBLIC):
+      - Streams certificate PDF as an attachment download (`Content-Type: application/pdf`, `Content-Disposition: attachment`)
+  - Added unit test suite `certificates.service.spec.ts` covering eligibility checks, 80% threshold enforcement, uniqueness conflict handling, and verification lookups
+  - Total backend tests: 121 tests passing across 12 test suites with 0 failures
+- [x] Frontend Integration:
+  - Created dynamic anti-piracy watermark component `frontend/src/components/video-watermark.tsx`:
+    * Displays semi-transparent floating security pill with recipient full name, email, and live updating timestamp
+    * Smoothly shifts across 4 screen quadrants every 12 seconds
+    * Embedded in live classroom sessions (`/classroom/[roomId]`)
+    * Embedded in video recording playback modals across Student and Instructor dashboards
+  - Student Dashboard (`frontend/src/app/student/page.tsx`):
+    * Added Course Progress & Certificate status blocks directly on enrolled course cards:
+      - When progress >= 80%: displays glowing "Claim Certificate / استلام الشهادة" button
+      - When claimed: displays verified certificate badge, PDF download button, and public verification link
+    * Added dedicated "Certificate / الشهادة" tab in the Course Portal modal with full credential preview, grade score, and download options
+  - Public Verification Page (`frontend/src/app/verify-certificate/[code]/page.tsx`):
+    * Public dynamic route validating credentials with official green shield badge, student name, course details, lead instructor, and PDF download button
+    * Handles invalid/revoked certificates with clear warning and return navigation
+    * Full dark purple/navy theme consistency (`#7c3aed`, `#090b14`, `#12162b`)
+- [x] Verification & Integrity Checks:
+  - 121 of 121 backend unit tests passed (`npm run test`)
+  - Backend and Frontend production builds succeeded with 0 errors (`npm run build`)
+  - Automated E2E verification test passed all 10 steps:
+    1. Authenticates student and creates dedicated test course
+    2. Verifies certificate claim is rejected with 400 Bad Request when progress < 80%
+    3. Student completes course requirements reaching 100% progress score
+    4. Eligibility endpoint verifies student is eligible
+    5. Certificate claimed via `POST /certificates/claim` (PDF and QR code generated)
+    6. Second claim attempt verified rejected with 409 Conflict
+    7. Public verification endpoint validates certificate code and returns student/course details
+    8. Download endpoint streams PDF file (verified valid PDF header and > 3.7KB payload)
+    9. Non-existent certificate code verified rejected with 404 Not Found

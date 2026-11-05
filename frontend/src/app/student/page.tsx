@@ -15,6 +15,8 @@ import { DiscussionPost } from '@/types/discussion';
 import { CourseMaterial, StudentCourseProgress } from '@/types/material';
 import NotificationsPopover from '@/components/notifications-popover';
 import ProfileModal from '@/components/profile-modal';
+import VideoWatermark from '@/components/video-watermark';
+import { Certificate, MyCertificateResponse } from '@/types/certificate';
 import {
   GraduationCap,
   BookOpen,
@@ -73,7 +75,9 @@ export default function StudentDashboardPage() {
 
   // Coursework / Course Details modal states
   const [activeCourseForAssignments, setActiveCourseForAssignments] = useState<Course | null>(null);
-  const [courseModalTab, setCourseModalTab] = useState<'assignments' | 'exams' | 'recordings' | 'materials' | 'announcements' | 'discussions'>('assignments');
+  const [courseModalTab, setCourseModalTab] = useState<'assignments' | 'exams' | 'recordings' | 'materials' | 'announcements' | 'discussions' | 'certificate'>('assignments');
+  const [courseCertificatesMap, setCourseCertificatesMap] = useState<Record<string, MyCertificateResponse>>({});
+  const [claimingCertificateCourseId, setClaimingCertificateCourseId] = useState<string | null>(null);
   const [courseAssignments, setCourseAssignments] = useState<Assignment[]>([]);
   const [loadingAssignments, setLoadingAssignments] = useState<boolean>(false);
   const [courseExams, setCourseExams] = useState<Exam[]>([]);
@@ -146,6 +150,7 @@ export default function StudentDashboardPage() {
       const roomsMap: Record<string, LiveRoom | null> = {};
       const attendanceMap: Record<string, StudentCourseAttendance> = {};
       const progressMap: Record<string, StudentCourseProgress> = {};
+      const certsMap: Record<string, MyCertificateResponse> = {};
 
       await Promise.all(
         enrolled.map(async (item) => {
@@ -169,11 +174,19 @@ export default function StudentDashboardPage() {
           } catch {
             // Silently ignore if not found
           }
+
+          try {
+            const certRes = await api.get<MyCertificateResponse>(`/courses/${item.courseId}/certificates/my-certificate`);
+            certsMap[item.courseId] = certRes;
+          } catch {
+            // Silently ignore if not found
+          }
         }),
       );
       setActiveRooms(roomsMap);
       setCourseAttendanceMap(attendanceMap);
       setCourseProgressMap(progressMap);
+      setCourseCertificatesMap(certsMap);
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         setFeedback({ type: 'error', text: `Failed to load courses: ${err.message}` });
@@ -182,6 +195,35 @@ export default function StudentDashboardPage() {
       setLoadingData(false);
     }
   }, []);
+
+  const handleClaimCertificate = async (courseId: string) => {
+    setClaimingCertificateCourseId(courseId);
+    try {
+      const res = await api.post<{ message: string; certificate: Certificate }>(
+        `/courses/${courseId}/certificates/claim`,
+      );
+      setFeedback({
+        type: 'success',
+        text: 'Congratulations! Official Certificate has been generated with verified QR code.',
+      });
+      setCourseCertificatesMap((prev) => ({
+        ...prev,
+        [courseId]: {
+          isEligible: true,
+          isClaimed: true,
+          currentProgress: res.certificate.gradePercentage,
+          requiredProgress: 80,
+          certificate: res.certificate,
+        },
+      }));
+    } catch (err: unknown) {
+      const msg =
+        err instanceof ApiError ? err.message : 'Failed to claim certificate.';
+      setFeedback({ type: 'error', text: msg });
+    } finally {
+      setClaimingCertificateCourseId(null);
+    }
+  };
 
   const handleOpenAttendanceModal = async (courseId: string) => {
     setLoadingAttendanceModal(true);
@@ -890,6 +932,70 @@ export default function StudentDashboardPage() {
                         </div>
                       )}
 
+                      {/* Certificate Status & Claim Block */}
+                      {courseCertificatesMap[item.courseId]?.isClaimed ? (
+                        <div className="mt-3.5 p-3 rounded-xl bg-purple-950/40 border border-purple-500/40 flex items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                              <Award className="w-4 h-4" />
+                            </div>
+                            <div className="truncate">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-white text-[11px]">Certificate Earned</span>
+                                <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/60">
+                                  VERIFIED
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-purple-300 font-mono truncate">
+                                {courseCertificatesMap[item.courseId].certificate?.certificateCode}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <a
+                              href={`http://localhost:4000/api/v1/certificates/download/${courseCertificatesMap[item.courseId].certificate?.certificateCode}`}
+                              className="px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-sm"
+                              title="Download official PDF certificate"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>PDF</span>
+                            </a>
+                            <Link
+                              href={`/verify-certificate/${courseCertificatesMap[item.courseId].certificate?.certificateCode}`}
+                              target="_blank"
+                              className="p-1.5 rounded-lg bg-[#181f3d] hover:bg-[#252f5c] text-slate-300 hover:text-white border border-[#2b3564] text-[11px] transition cursor-pointer"
+                              title="View public verification credential"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </Link>
+                          </div>
+                        </div>
+                      ) : (courseProgressMap[item.courseId]?.overallPercentage || 0) >= 80 ? (
+                        <div className="mt-3.5 p-3 rounded-xl bg-gradient-to-r from-purple-950/60 via-indigo-950/50 to-purple-950/60 border border-purple-500/60 flex flex-col gap-2 text-xs shadow-lg shadow-purple-950/30">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 font-bold text-purple-200 text-xs">
+                              <Award className="w-4 h-4 text-amber-400 animate-bounce" />
+                              <span>Certificate Unlocked! / مبروك، استحققت الشهادة</span>
+                            </div>
+                            <span className="text-[10px] font-mono text-emerald-400 font-bold">
+                              {courseProgressMap[item.courseId].overallPercentage}% (≥ 80%)
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => handleClaimCertificate(item.courseId)}
+                            disabled={claimingCertificateCourseId === item.courseId}
+                            className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-amber-600 via-purple-600 to-indigo-600 hover:from-amber-500 hover:via-purple-500 hover:to-indigo-500 text-white font-extrabold text-xs transition shadow-lg shadow-purple-900/40 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                          >
+                            <Award className="w-4 h-4" />
+                            <span>
+                              {claimingCertificateCourseId === item.courseId
+                                ? 'Generating PDF & QR...'
+                                : 'Claim Official Certificate / استلام الشهادة'}
+                            </span>
+                          </button>
+                        </div>
+                      ) : null}
+
                       {/* Active Live Session in Enrolled Course */}
                       {activeRooms[item.courseId] && (
                         <div className="mt-4 p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 flex flex-col gap-2">
@@ -1203,6 +1309,18 @@ export default function StudentDashboardPage() {
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
                     Discussions & Q&A ({courseDiscussions.length})
+                  </button>
+
+                  <button
+                    onClick={() => setCourseModalTab('certificate')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      courseModalTab === 'certificate'
+                        ? 'bg-purple-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white hover:bg-[#1a203a]'
+                    }`}
+                  >
+                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                    Certificate / الشهادة
                   </button>
                 </div>
               </div>
@@ -1856,6 +1974,165 @@ export default function StudentDashboardPage() {
                 )}
               </div>
             )}
+
+            {/* Modal Body: Certificate Tab */}
+            {courseModalTab === 'certificate' && activeCourseForAssignments && (
+              <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-base font-bold text-white flex items-center gap-2">
+                      <Award className="w-5 h-5 text-amber-400" />
+                      Official Course Certificate & Verification
+                    </h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Accredited completion certificate with cryptographic QR code verification.
+                    </p>
+                  </div>
+                </div>
+
+                {courseCertificatesMap[activeCourseForAssignments.id]?.isClaimed ? (
+                  <div className="bg-[#0b0e1b] rounded-2xl border border-purple-500/40 p-6 sm:p-8 space-y-6">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-6 pb-6 border-b border-[#1f2648]">
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+                          <ShieldCheck className="w-8 h-8" />
+                        </div>
+                        <div>
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/60 mb-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                            ISSUED & VERIFIED
+                          </div>
+                          <h3 className="text-lg font-extrabold text-white">
+                            Certificate of Completion
+                          </h3>
+                          <p className="text-xs text-slate-400">
+                            {activeCourseForAssignments.title} ({activeCourseForAssignments.code})
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-center sm:text-right">
+                        <span className="text-[10px] uppercase font-semibold text-slate-400 block">
+                          Final Grade Score
+                        </span>
+                        <span className="text-2xl font-black text-emerald-400 font-mono">
+                          {courseCertificatesMap[activeCourseForAssignments.id].certificate?.gradePercentage}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                      <div className="p-3.5 rounded-xl bg-[#0e1224] border border-[#1f2648]">
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                          Credential Code
+                        </span>
+                        <code className="text-xs font-mono font-bold text-purple-300 mt-1 block select-all">
+                          {courseCertificatesMap[activeCourseForAssignments.id].certificate?.certificateCode}
+                        </code>
+                      </div>
+                      <div className="p-3.5 rounded-xl bg-[#0e1224] border border-[#1f2648]">
+                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                          Issue Date
+                        </span>
+                        <span className="text-xs font-semibold text-slate-200 mt-1 block">
+                          {new Date(
+                            courseCertificatesMap[activeCourseForAssignments.id].certificate?.issuedAt ||
+                              Date.now(),
+                          ).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 pt-2">
+                      <a
+                        href={`http://localhost:4000/api/v1/certificates/download/${courseCertificatesMap[activeCourseForAssignments.id].certificate?.certificateCode}`}
+                        className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2.5 px-5 rounded-xl text-xs transition flex items-center gap-2 cursor-pointer shadow-lg shadow-purple-900/30"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>Download Verified PDF Certificate</span>
+                      </a>
+                      <Link
+                        href={`/verify-certificate/${courseCertificatesMap[activeCourseForAssignments.id].certificate?.certificateCode}`}
+                        target="_blank"
+                        className="bg-[#181f3d] hover:bg-[#252f5c] text-purple-300 hover:text-white border border-[#2b3564] py-2.5 px-4 rounded-xl text-xs font-semibold transition flex items-center gap-2 cursor-pointer"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        <span>Open Public Verification Page</span>
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-[#0b0e1b] rounded-2xl border border-[#1f2648] p-6 sm:p-8 space-y-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                        <Award className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="text-base font-bold text-white">
+                          {(courseProgressMap[activeCourseForAssignments.id]?.overallPercentage || 0) >= 80
+                            ? 'You are eligible to claim your Certificate!'
+                            : 'Course Certificate Requirements'}
+                        </h4>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          A minimum of 80% completion across homework, exams, and attendance is required.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Progress Indicator */}
+                    <div className="space-y-2 p-4 rounded-xl bg-[#0e1224] border border-[#1f2648]">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400 font-medium">Your Progress</span>
+                        <span className="font-mono font-bold text-purple-300">
+                          {courseProgressMap[activeCourseForAssignments.id]?.overallPercentage || 0}% / 80% Required
+                        </span>
+                      </div>
+                      <div className="w-full bg-[#161b33] rounded-full h-3 overflow-hidden border border-white/5">
+                        <div
+                          className={`h-3 rounded-full transition-all duration-500 ${
+                            (courseProgressMap[activeCourseForAssignments.id]?.overallPercentage || 0) >= 80
+                              ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+                              : 'bg-gradient-to-r from-purple-600 to-indigo-500'
+                          }`}
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              courseProgressMap[activeCourseForAssignments.id]?.overallPercentage || 0,
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {(courseProgressMap[activeCourseForAssignments.id]?.overallPercentage || 0) >= 80 ? (
+                      <button
+                        onClick={() => handleClaimCertificate(activeCourseForAssignments.id)}
+                        disabled={claimingCertificateCourseId === activeCourseForAssignments.id}
+                        className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-600 via-purple-600 to-indigo-600 hover:from-amber-500 hover:via-purple-500 hover:to-indigo-500 text-white font-extrabold text-sm transition shadow-xl shadow-purple-900/40 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        <Award className="w-4 h-4" />
+                        <span>
+                          {claimingCertificateCourseId === activeCourseForAssignments.id
+                            ? 'Generating PDF & QR Code...'
+                            : 'Claim Official Certificate / استلام الشهادة الرسمية'}
+                        </span>
+                      </button>
+                    ) : (
+                      <p className="text-xs text-amber-300/80 bg-amber-950/30 border border-amber-900/40 p-3 rounded-xl flex items-center gap-2">
+                        <Clock className="w-4 h-4 shrink-0 text-amber-400" />
+                        <span>
+                          Keep going! Complete remaining assignments and exams to reach 80% and unlock your official certificate.
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2279,11 +2556,12 @@ export default function StudentDashboardPage() {
               </button>
             </div>
 
-            <div className="p-4 bg-black flex items-center justify-center">
+            <div className="p-4 bg-black flex items-center justify-center relative overflow-hidden">
+              <VideoWatermark />
               <video
                 controls
                 autoPlay
-                className="w-full max-h-[60vh] rounded-lg shadow-lg"
+                className="w-full max-h-[60vh] rounded-lg shadow-lg relative z-10"
                 src={getRecordingStreamUrl(activeRecordingForPlayback)}
               >
                 Your browser does not support video playback.

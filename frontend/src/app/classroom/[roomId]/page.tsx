@@ -26,6 +26,7 @@ import {
   UploadCloud,
   CheckCircle2,
 } from 'lucide-react';
+import VideoWatermark from '@/components/video-watermark';
 
 interface PageProps {
   params: Promise<{
@@ -451,6 +452,7 @@ export default function ClassroomPage({ params }: PageProps) {
 
       {/* LiveKit Video Conference Container */}
       <main className="flex-1 w-full bg-[#090b14] relative overflow-hidden">
+        <VideoWatermark />
         <LiveKitRoom
           video={false}
           audio={false}

@@ -36,6 +36,7 @@ model User {
   notifications     Notification[]     @relation("UserNotifications")
   discussionPosts   DiscussionPost[]   @relation("UserDiscussionPosts")
   passwordResetTokens PasswordResetToken[]
+  certificates      Certificate[]      @relation("StudentCertificates")
 
   @@map("users")
 }
@@ -59,6 +60,7 @@ model Course {
   announcements   Announcement[]
   discussionPosts DiscussionPost[]
   materials       CourseMaterial[]
+  certificates    Certificate[]
 
   @@map("courses")
 }
@@ -278,5 +280,21 @@ model PasswordResetToken {
 
   @@map("password_reset_tokens")
 }
+
+model Certificate {
+  id              String   @id @default(uuid())
+  certificateCode String   @unique
+  courseId        String
+  course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         User     @relation("StudentCertificates", fields: [studentId], references: [id], onDelete: Cascade)
+  issuedAt        DateTime @default(now())
+  gradePercentage Float
+  pdfUrl          String?
+
+  @@unique([courseId, studentId])
+  @@map("certificates")
+}
+
 
 
