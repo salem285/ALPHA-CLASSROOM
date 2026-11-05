@@ -17,6 +17,11 @@ async function bootstrap() {
     mkdirSync(materialsDir, { recursive: true });
   }
 
+  const avatarsDir = join(process.cwd(), 'uploads', 'avatars');
+  if (!existsSync(avatarsDir)) {
+    mkdirSync(avatarsDir, { recursive: true });
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Security Hardening: Helmet with cross-origin media support for recordings and streaming

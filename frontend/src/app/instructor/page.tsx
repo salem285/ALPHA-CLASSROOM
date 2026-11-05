@@ -56,6 +56,7 @@ import { Announcement } from '@/types/announcement';
 import { DiscussionPost } from '@/types/discussion';
 import { CourseMaterial } from '@/types/material';
 import NotificationsPopover from '@/components/notifications-popover';
+import ProfileModal from '@/components/profile-modal';
 
 export default function InstructorDashboardPage() {
   const router = useRouter();
@@ -68,6 +69,7 @@ export default function InstructorDashboardPage() {
   const [formSubmitting, setFormSubmitting] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+  const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
 
   // Materials states
   const [materials, setMaterials] = useState<CourseMaterial[]>([]);
@@ -819,14 +821,34 @@ export default function InstructorDashboardPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <NotificationsPopover />
-            <div className="text-right hidden sm:block">
-              <div className="text-xs font-semibold text-slate-200">
-                {user.firstName} {user.lastName}
+            <button
+              onClick={() => setIsProfileOpen(true)}
+              className="flex items-center gap-2.5 p-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-[#262e52] hover:border-purple-500/50 hover:bg-[#1a203a] transition cursor-pointer text-left group"
+              title="Manage Profile & Settings"
+            >
+              <div className="w-8 h-8 rounded-full overflow-hidden bg-purple-900/60 border border-purple-500/40 flex items-center justify-center shrink-0 text-xs font-bold text-purple-200">
+                {user.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl.startsWith('http') ? user.avatarUrl : `http://localhost:4000${user.avatarUrl}`}
+                    alt={user.firstName}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span>
+                    {user.firstName?.[0] || 'I'}
+                    {user.lastName?.[0] || ''}
+                  </span>
+                )}
               </div>
-              <div className="text-[11px] text-slate-400 font-mono">{user.email}</div>
-            </div>
+              <div className="text-right hidden sm:block">
+                <div className="text-xs font-semibold text-slate-200 group-hover:text-purple-300 transition">
+                  {user.firstName} {user.lastName}
+                </div>
+                <div className="text-[11px] text-slate-400 font-mono">{user.email}</div>
+              </div>
+            </button>
             <button
               onClick={logout}
               className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-[#262e52] hover:bg-[#1a203a] text-xs font-medium text-slate-300 hover:text-white transition flex items-center gap-1.5 cursor-pointer"
@@ -3448,6 +3470,12 @@ export default function InstructorDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Account Profile & Settings Modal */}
+      <ProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+      />
     </div>
   );
 }

@@ -7,6 +7,9 @@ export interface User {
   lastName: string;
   role: UserRole;
   isApproved: boolean;
+  avatarUrl?: string | null;
+  phoneNumber?: string | null;
+  bio?: string | null;
   createdAt: string;
   updatedAt?: string;
 }

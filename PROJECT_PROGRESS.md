@@ -24,6 +24,7 @@
 | **Phase 11** | Session Recording & Lecture Archive System | **Completed** | 2026-11-05 |
 | **Phase 12** | Polish, Security Audit & Production Readiness | **Completed** | 2026-11-05 |
 | **Phase 13** | Course Materials Library, Student Progress & CSV Export | **Completed** | 2026-11-05 |
+| **Phase 14** | Email SMTP Service, Password Reset & Profile Management | **Completed** | 2026-11-05 |
 
 ---
 
@@ -453,3 +454,49 @@
     5. Instructor downloads CSV grade report (verified headers and student record)
     6. Instructor downloads CSV attendance report (verified headers)
     7. Instructor deletes material (record removed and file unlinked)
+
+---
+
+## Phase 14 Execution Checklist
+- [x] Database Schema Expansion (`backend/prisma/schema.prisma`):
+  - Updated `User` model with `avatarUrl (String?)`, `phoneNumber (String?)`, `bio (String?)`, and relation `passwordResetTokens PasswordResetToken[]`
+  - Added `PasswordResetToken` model (`id`, `userId`, `token @unique`, `expiresAt`, `used @default(false)`, `createdAt`) with cascade relation to `User`
+  - Executed migration `20261105121821_add_profile_and_password_reset` and regenerated Prisma Client
+- [x] Backend Email SMTP Service (`backend/src/modules/mail`):
+  - Configured `nodemailer` transport using environment variables (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`)
+  - Implemented console logging fallback for development when external live SMTP is unavailable
+  - Built HTML and plain-text email templates with 15-minute expiration notice and direct password reset link
+- [x] Backend Password Reset Workflow (`backend/src/modules/auth`):
+  - `POST /api/v1/auth/forgot-password`: Rate-limited (5 req/min), anti-enumeration design, generates cryptographically secure 64-char token, stores expiration in DB, and dispatches reset email
+  - `POST /api/v1/auth/reset-password`: Validates token expiration & used status, hashes new password with bcrypt (10 rounds), updates user password, and invalidates all reset tokens for the user in a transaction
+- [x] Backend User Profile & Avatar Management (`backend/src/modules/users`):
+  - Configured multer disk storage in `uploads/avatars` with 5MB file size limit and format filters (`jpg`, `jpeg`, `png`, `webp`)
+  - Configured static asset serving for avatar uploads via `/uploads/avatars/:filename`
+  - `POST /api/v1/users/avatar` (Authenticated): uploads image, cleans up old custom avatar if present, and updates user record
+  - `PATCH /api/v1/users/profile` (Authenticated): updates `firstName`, `lastName`, `phoneNumber`, `bio`
+  - `PATCH /api/v1/users/change-password` (Authenticated): verifies current password before updating with bcrypt hash
+  - Adjusted `@Roles` guard in `UsersController` so authenticated students and instructors can manage their own profile and credentials
+- [x] Backend Unit Tests:
+  - Updated `auth.service.spec.ts` with test cases for anti-enumeration forgot-password, reset email dispatch, token validation, and password reset
+  - Updated `users.service.spec.ts` with test cases for profile updates, avatar updates, and change password verification
+  - All 111 tests passed across 11 test suites
+- [x] Frontend Auth Pages & Profile Management:
+  - `frontend/src/app/forgot-password/page.tsx`: dedicated forgot password page matching dark purple theme, with email input, loading states, and development mode instructions
+  - `frontend/src/app/reset-password/page.tsx`: password reset page reading `token` from URL query string, new password + confirmation inputs, password visibility toggle, and redirect to login
+  - `frontend/src/app/login/page.tsx`: added "Forgot password?" link directly above the password input
+  - `frontend/src/components/profile-modal.tsx`: interactive modal featuring avatar photo upload with instant preview, profile details form (name, phone, bio), and change password form
+  - Integrated `ProfileModal` with interactive user avatar chip into headers of `/admin`, `/instructor`, and `/student`
+- [x] Verification & Integrity Checks:
+  - All 111 backend unit tests passed (`npm run test`)
+  - Both backend (`npm run build`) and frontend (`npm run build`) compiled cleanly with 0 errors
+  - Automated E2E verification test passed all 10 steps:
+    1. Student requests forgot password -> 200 OK anti-enumeration response
+    2. Reset token fetched from PostgreSQL database
+    3. Password reset successfully using token and new password `AlphaStudent@2026!`
+    4. Old password `Alpha@2026!` rejected (HTTP 401)
+    5. New password `AlphaStudent@2026!` authenticated successfully (HTTP 200)
+    6. Profile updated with phone number and bio
+    7. Avatar uploaded via multipart/form-data
+    8. Static avatar URL verified (HTTP 200 OK)
+    9. Password changed back to standard `Alpha@2026!` via authenticated endpoint
+    10. Standard student login verified with `Alpha@2026!`
