@@ -8,7 +8,7 @@ import { api, ApiError } from '@/lib/api';
 import { Course } from '@/types/course';
 import { Assignment, Submission } from '@/types/assignment';
 import { Exam, ExamAttempt } from '@/types/exam';
-import { LiveRoom } from '@/types/room';
+import { LiveRoom, LiveRoomWithAttendance, AttendanceRecord } from '@/types/room';
 import {
   BookOpen,
   Users,
@@ -34,13 +34,15 @@ import {
   Radio,
   Video,
   PhoneOff,
+  UserCheck,
+  Timer,
 } from 'lucide-react';
 
 export default function InstructorDashboardPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'courses' | 'assignments' | 'exams'>('courses');
+  const [activeTab, setActiveTab] = useState<'courses' | 'assignments' | 'exams' | 'attendance'>('courses');
   const [courses, setCourses] = useState<Course[]>([]);
   const [loadingData, setLoadingData] = useState<boolean>(true);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -54,6 +56,11 @@ export default function InstructorDashboardPage() {
   const [description, setDescription] = useState('');
   const [accessCode, setAccessCode] = useState('');
   const [isPublished, setIsPublished] = useState(true);
+
+  // Attendance states
+  const [attendanceSessions, setAttendanceSessions] = useState<LiveRoomWithAttendance[]>([]);
+  const [loadingAttendance, setLoadingAttendance] = useState<boolean>(false);
+  const [activeSessionForAttendance, setActiveSessionForAttendance] = useState<LiveRoomWithAttendance | null>(null);
 
   // Assignment states
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
@@ -167,6 +174,19 @@ export default function InstructorDashboardPage() {
     }
   }, []);
 
+  const fetchAttendanceSessions = useCallback(async (courseId: string) => {
+    setLoadingAttendance(true);
+    try {
+      const data = await api.get<LiveRoomWithAttendance[]>(`/courses/${courseId}/attendance-sessions`);
+      setAttendanceSessions(data);
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to load attendance sessions';
+      setFeedback({ type: 'error', text: msg });
+    } finally {
+      setLoadingAttendance(false);
+    }
+  }, []);
+
   const fetchSubmissions = async (assignment: Assignment) => {
     setActiveAssignmentForSubmissions(assignment);
     setLoadingSubmissions(true);
@@ -222,9 +242,11 @@ export default function InstructorDashboardPage() {
         fetchAssignments(selectedCourseId);
       } else if (activeTab === 'exams') {
         fetchExams(selectedCourseId);
+      } else if (activeTab === 'attendance') {
+        fetchAttendanceSessions(selectedCourseId);
       }
     }
-  }, [selectedCourseId, activeTab, fetchAssignments, fetchExams]);
+  }, [selectedCourseId, activeTab, fetchAssignments, fetchExams, fetchAttendanceSessions]);
 
   const handleCreateCourse = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -630,6 +652,18 @@ export default function InstructorDashboardPage() {
               <CheckSquare className="w-3.5 h-3.5" />
               Online Exams ({exams.length})
             </button>
+
+            <button
+              onClick={() => setActiveTab('attendance')}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'attendance'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-[#191f3a]'
+              }`}
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              Attendance Reports
+            </button>
           </div>
 
           <button
@@ -813,6 +847,16 @@ export default function InstructorDashboardPage() {
                         >
                           <CheckSquare className="w-3 h-3" />
                           Exams
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedCourseId(course.id);
+                            setActiveTab('attendance');
+                          }}
+                          className="text-xs px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 font-medium transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <UserCheck className="w-3 h-3" />
+                          Attendance
                         </button>
                       </div>
                     </div>
@@ -1057,6 +1101,126 @@ export default function InstructorDashboardPage() {
                             >
                               <Eye className="w-3.5 h-3.5 text-indigo-400" />
                               Results ({exam._count?.attempts || 0})
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 4: Classroom Attendance Reports */}
+        {activeTab === 'attendance' && (
+          <div className="space-y-6">
+            {courses.length === 0 ? (
+              <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center">
+                <UserCheck className="w-12 h-12 text-emerald-400/40 mx-auto mb-3" />
+                <h4 className="text-base font-bold text-white">Create a Course First</h4>
+              </div>
+            ) : (
+              <div>
+                {/* Course Selector Bar */}
+                <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Selected Course:
+                    </label>
+                    <select
+                      value={selectedCourseId || ''}
+                      onChange={(e) => setSelectedCourseId(e.target.value)}
+                      className="bg-[#0b0e1b] border border-[#262e52] rounded-xl px-3 py-2 text-xs font-medium text-slate-200 focus:outline-none focus:border-purple-500 transition"
+                    >
+                      {courses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} - {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedCourseId && (
+                    <button
+                      onClick={() => fetchAttendanceSessions(selectedCourseId)}
+                      disabled={loadingAttendance}
+                      className="text-xs px-3 py-2 rounded-xl border border-[#262e52] hover:bg-[#1a203a] text-slate-200 transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${loadingAttendance ? 'animate-spin' : ''}`} />
+                      Refresh Sessions
+                    </button>
+                  )}
+                </div>
+
+                {/* Sessions List */}
+                <div className="mt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <UserCheck className="w-4 h-4 text-emerald-400" />
+                      Live Classroom Sessions for {selectedCourse?.code || 'Course'} ({attendanceSessions.length})
+                    </h3>
+                  </div>
+
+                  {loadingAttendance ? (
+                    <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center text-slate-400">
+                      <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                      <span className="text-xs">Loading attendance analytics...</span>
+                    </div>
+                  ) : attendanceSessions.length === 0 ? (
+                    <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center text-slate-400">
+                      <Radio className="w-12 h-12 text-purple-400/40 mx-auto mb-3" />
+                      <p className="font-semibold text-slate-200">No Live Class Sessions Yet</p>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                        Launch a live class from the My Courses tab. As students connect to the classroom, their attendance and engagement time will automatically record here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                      {attendanceSessions.map((session) => (
+                        <div
+                          key={session.id}
+                          className="bg-[#12162b] border border-[#21294c] hover:border-emerald-500/50 rounded-2xl p-5 shadow-lg transition flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-2.5">
+                              <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {new Date(session.createdAt).toLocaleDateString()} &bull; {new Date(session.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              {session.isLive ? (
+                                <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-800/60 animate-pulse">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                  LIVE NOW
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                                  COMPLETED
+                                </span>
+                              )}
+                            </div>
+
+                            <h4 className="font-bold text-white text-base leading-snug">{session.title}</h4>
+
+                            <div className="mt-3.5 p-3 rounded-xl bg-[#0b0e1b] border border-[#1a2038] text-xs flex items-center justify-between">
+                              <span className="text-slate-400 flex items-center gap-1.5">
+                                <Users className="w-3.5 h-3.5 text-indigo-400" />
+                                Attendees Recorded
+                              </span>
+                              <span className="font-bold font-mono text-emerald-400 text-sm">
+                                {session._count?.attendanceRecords || session.attendanceRecords?.length || 0}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-[#1c223c]">
+                            <button
+                              onClick={() => setActiveSessionForAttendance(session)}
+                              className="w-full bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-300 border border-emerald-500/40 font-semibold py-2 px-3 rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <UserCheck className="w-3.5 h-3.5" />
+                              View Attendees List ({session._count?.attendanceRecords || session.attendanceRecords?.length || 0})
                             </button>
                           </div>
                         </div>
@@ -1937,6 +2101,85 @@ export default function InstructorDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Attendance Detail Modal */}
+      {activeSessionForAttendance && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#12162b] border border-[#273059] rounded-2xl w-full max-w-2xl p-6 shadow-2xl relative max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-4 border-b border-[#21294c]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">Session Attendance Report</h3>
+                  <p className="text-xs text-slate-400">
+                    {activeSessionForAttendance.title} &bull; {new Date(activeSessionForAttendance.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveSessionForAttendance(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-[#1a203a] transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-4 overflow-y-auto flex-1 space-y-3">
+              {(!activeSessionForAttendance.attendanceRecords || activeSessionForAttendance.attendanceRecords.length === 0) ? (
+                <div className="py-12 text-center text-slate-400">
+                  <UserCheck className="w-10 h-10 text-slate-600 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-300">No Student Attendees Recorded</p>
+                  <p className="text-xs text-slate-500 mt-1">Students will automatically appear here once they connect to this session.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {activeSessionForAttendance.attendanceRecords.map((att) => (
+                    <div
+                      key={att.id}
+                      className="p-3.5 rounded-xl bg-[#0b0e1b] border border-[#202848] flex items-center justify-between text-xs"
+                    >
+                      <div>
+                        <div className="font-bold text-white text-sm">
+                          {att.student?.firstName} {att.student?.lastName}
+                        </div>
+                        <div className="text-slate-400 font-mono text-[11px]">
+                          {att.student?.email}
+                        </div>
+                        <div className="text-slate-500 text-[10px] mt-1 flex items-center gap-2">
+                          <span>Joined: {new Date(att.joinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          {att.leftAt && (
+                            <span>&bull; Left: {new Date(att.leftAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-right space-y-1">
+                        <div className="text-sm font-bold font-mono text-emerald-400 flex items-center justify-end gap-1">
+                          <Timer className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{att.durationMinutes} min</span>
+                        </div>
+                        <span className="inline-block px-2 py-0.5 rounded-full font-bold text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800/60">
+                          {att.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-4 border-t border-[#21294c] flex justify-end">
+              <button
+                onClick={() => setActiveSessionForAttendance(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-[#1a203a] hover:bg-[#232c52] text-slate-200 transition cursor-pointer"
+              >
+                Close Report
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -22,6 +22,13 @@ describe('RoomsService', () => {
       enrollment: {
         findUnique: vi.fn(),
       },
+      attendanceRecord: {
+        findUnique: vi.fn(),
+        findMany: vi.fn(),
+        create: vi.fn(),
+        update: vi.fn(),
+        upsert: vi.fn(),
+      },
     };
 
     service = new RoomsService(mockPrisma as any);
@@ -209,6 +216,13 @@ describe('RoomsService', () => {
         course: { id: 'c-1', instructorId: 'inst-1' },
       });
       mockPrisma.enrollment.findUnique.mockResolvedValue({ status: 'ACTIVE' });
+      mockPrisma.attendanceRecord.upsert.mockResolvedValue({
+        id: 'att-1',
+        roomId: 'room-1',
+        studentId: 'student-1',
+        joinedAt: new Date(),
+        status: 'PRESENT',
+      });
 
       const result = await service.generateToken('room-1', {
         id: 'student-1',
@@ -223,6 +237,16 @@ describe('RoomsService', () => {
       expect(result.token.length).toBeGreaterThan(20);
       expect(result.room.id).toBe('room-1');
       expect(result).toHaveProperty('wsUrl');
+      expect(mockPrisma.attendanceRecord.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            roomId_studentId: {
+              roomId: 'room-1',
+              studentId: 'student-1',
+            },
+          },
+        }),
+      );
     });
 
     it('should generate a valid LiveKit JWT token with roomAdmin grant for course instructor', async () => {
@@ -287,6 +311,108 @@ describe('RoomsService', () => {
         }),
       );
       expect(result.isLive).toBe(false);
+    });
+  });
+
+  describe('recordHeartbeat', () => {
+    it('should update leftAt and calculate durationMinutes for existing attendance record', async () => {
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+      mockPrisma.attendanceRecord.findUnique.mockResolvedValue({
+        id: 'att-1',
+        roomId: 'room-1',
+        studentId: 'student-1',
+        joinedAt: tenMinutesAgo,
+        status: 'PRESENT',
+      });
+      mockPrisma.attendanceRecord.update.mockImplementation(({ data }: any) => ({
+        id: 'att-1',
+        ...data,
+      }));
+
+      const res = await service.recordHeartbeat('room-1', 'student-1');
+      expect(mockPrisma.attendanceRecord.update).toHaveBeenCalled();
+      expect(res.durationMinutes).toBeGreaterThanOrEqual(10);
+    });
+  });
+
+  describe('recordLeave', () => {
+    it('should update exit timestamp and finalize durationMinutes', async () => {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      mockPrisma.attendanceRecord.findUnique.mockResolvedValue({
+        id: 'att-1',
+        roomId: 'room-1',
+        studentId: 'student-1',
+        joinedAt: fiveMinutesAgo,
+      });
+      mockPrisma.attendanceRecord.update.mockImplementation(({ data }: any) => ({
+        id: 'att-1',
+        ...data,
+      }));
+
+      const res = await service.recordLeave('room-1', 'student-1');
+      expect(mockPrisma.attendanceRecord.update).toHaveBeenCalled();
+      expect(res?.durationMinutes).toBeGreaterThanOrEqual(5);
+    });
+  });
+
+  describe('getRoomAttendance', () => {
+    it('should throw ForbiddenException if user is not course instructor or admin', async () => {
+      mockPrisma.liveRoom.findUnique.mockResolvedValue({
+        id: 'room-1',
+        course: { instructorId: 'inst-1' },
+      });
+
+      await expect(
+        service.getRoomAttendance('room-1', 'other-inst', UserRole.INSTRUCTOR),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should return attendance records for course instructor', async () => {
+      mockPrisma.liveRoom.findUnique.mockResolvedValue({
+        id: 'room-1',
+        title: 'Live Session 1',
+        course: { id: 'c-1', instructorId: 'inst-1' },
+      });
+      mockPrisma.attendanceRecord.findMany.mockResolvedValue([
+        {
+          id: 'att-1',
+          studentId: 'student-1',
+          durationMinutes: 45,
+          status: 'PRESENT',
+          student: { firstName: 'Sam', lastName: 'Student', email: 'sam@test.com' },
+        },
+      ]);
+
+      const res = await service.getRoomAttendance('room-1', 'inst-1', UserRole.INSTRUCTOR);
+      expect(res.totalAttendees).toBe(1);
+      expect(res.records[0].student.email).toBe('sam@test.com');
+    });
+  });
+
+  describe('getCourseAttendanceForStudent', () => {
+    it('should calculate overall attendance rate and return records', async () => {
+      mockPrisma.course.findUnique.mockResolvedValue({
+        id: 'c-1',
+        title: 'WebRTC Course',
+        code: 'CS101',
+        liveRooms: [{ id: 'room-1' }, { id: 'room-2' }],
+      });
+      mockPrisma.enrollment.findUnique.mockResolvedValue({ status: 'ACTIVE' });
+      mockPrisma.attendanceRecord.findMany.mockResolvedValue([
+        {
+          id: 'att-1',
+          roomId: 'room-1',
+          durationMinutes: 30,
+          status: 'PRESENT',
+          room: { id: 'room-1', title: 'Lecture 1' },
+        },
+      ]);
+
+      const res = await service.getCourseAttendanceForStudent('c-1', 'student-1');
+      expect(res.totalSessions).toBe(2);
+      expect(res.attendedSessions).toBe(1);
+      expect(res.attendancePercentage).toBe(50);
+      expect(res.records.length).toBe(1);
     });
   });
 });

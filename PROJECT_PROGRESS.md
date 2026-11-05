@@ -19,7 +19,7 @@
 | **Phase 6** | Assignments & Submissions System | **Completed** | 2026-11-04 |
 | **Phase 7** | Online Examination & Grading System | **Completed** | 2026-11-04 |
 | **Phase 8** | Live Classrooms System (LiveKit WebRTC) | **Completed** | 2026-11-04 |
-| **Phase 9** | Attendance Tracking | Pending | |
+| **Phase 9** | Automated Classroom Attendance Tracking & Analytics | **Completed** | 2026-11-05 |
 | **Phase 10** | Real-Time Messaging & Notifications | Pending | |
 | **Phase 11** | Cloud Storage & Meeting Recordings (Google Drive) | Pending | |
 | **Phase 12** | Polish, Audit & Production Readiness | Pending | |
@@ -244,15 +244,55 @@
 
 ---
 
-## Phase 9: Attendance Tracking System Outline
-- [ ] Define Prisma models:
-  - `AttendanceSession` (id, courseId, liveRoomId?, title, sessionDate, startTime, endTime, code, isLive, createdAt)
-  - `AttendanceRecord` (id, sessionId, studentId, status [PRESENT, ABSENT, LATE, EXCUSED], checkedInAt, @@unique([sessionId, studentId]))
-- [ ] Run migration: `npx prisma migrate dev --name add_attendance_tracking`
-- [ ] Implement backend `AttendanceModule` with role-based permissions:
-  - Instructor opens attendance session with PIN/code
-  - Student checks in using session code
-  - Instructor manually marks/adjusts student attendance
-  - Attendance summary reporting and percentage tracking per student
-- [ ] Frontend UI for Instructor Attendance Manager & Live Check-in Monitor
-- [ ] Frontend UI for Student Attendance Check-in & History Dashboard
+## Phase 9 Execution Checklist
+- [x] Expand Prisma schema with `AttendanceRecord` model:
+  - `AttendanceRecord` (id, roomId, studentId, joinedAt, leftAt, durationMinutes, status [PRESENT, LATE, ABSENT], createdAt, updatedAt, @@unique([roomId, studentId]))
+  - Added cascade relation to `LiveRoom` and `User`
+- [x] Execute migration `20261105102322_add_attendance_records` in PostgreSQL
+- [x] Regenerate Prisma Client with `AttendanceRecordDelegate`
+- [x] Backend Attendance Logic in `RoomsModule` (`RoomsService`, `RoomsController`):
+  - Auto-create attendance record with `joinedAt: new Date()` upon student requesting LiveKit token (`GET /api/v1/rooms/:roomId/token`)
+  - `POST /api/v1/rooms/:roomId/heartbeat` (STUDENT): updates `leftAt` and recalculates `durationMinutes`
+  - `POST /api/v1/rooms/:roomId/leave` (STUDENT): records exit timestamp and finalizes `durationMinutes`
+  - `GET /api/v1/rooms/:roomId/attendance` (INSTRUCTOR owner, ADMIN): returns all session attendees with names, emails, duration, status
+  - `GET /api/v1/courses/:courseId/my-attendance` (STUDENT): returns personal attendance history, total/attended sessions, and calculated attendance rate percentage
+  - `GET /api/v1/courses/:courseId/attendance-sessions` (INSTRUCTOR owner, ADMIN): returns all past sessions with attendees for instructor reports
+- [x] Comprehensive unit tests in `rooms.service.spec.ts` covering attendance logic:
+  - Token request auto-logs attendance record
+  - Heartbeat updates `leftAt` and `durationMinutes`
+  - Leave endpoint records exit time
+  - Room attendance reports return attendee list
+  - Student course attendance calculates percentage rate accurately
+  - Total backend tests: 63 passed across all 7 test suites
+- [x] Frontend Classroom Attendance Integration (`frontend/src/app/classroom/[roomId]/page.tsx`):
+  - Automated 60-second heartbeat interval while student is active in room
+  - Automatic `leave` endpoint invocation on unmount and on clicking "Leave Classroom"
+- [x] Frontend Instructor Portal (`frontend/src/app/instructor/page.tsx`):
+  - "Attendance Reports" tab with course selector and session cards
+  - Attendees detail modal with student names, emails, join/leave times, duration, and status
+  - Quick "Attendance" navigation button on course cards in Courses tab
+- [x] Frontend Student Portal (`frontend/src/app/student/page.tsx`):
+  - Course attendance rate summary badge on each enrolled course card
+  - Detailed session history modal showing overall attendance %, attended vs total sessions, standing badge, and breakdown of all joined sessions with dates, times, and duration
+- [x] Zero compilation errors verified for both backend (`npm run build`) and frontend (`npm run build`)
+- [x] Live automated end-to-end test (`scratch/test_phase9_attendance.ps1`):
+  1. Instructor creates course with access code
+  2. Instructor starts live classroom session
+  3. Student enrolls with access code
+  4. Student requests LiveKit token (verifies auto-attendance record creation)
+  5. Student sends heartbeat ping and calls leave endpoint (verifies duration calculation and leftAt timestamp)
+  6. Instructor queries room attendance report (verifies attendee student details, duration, and status)
+  7. Student queries personal attendance history (verifies 100% attendance rate for 1/1 session)
+
+---
+
+## Phase 10: Real-Time Messaging & Notifications Outline
+- [ ] Define Prisma models for direct & classroom chat:
+  - `ChatMessage` (id, courseId, roomId?, senderId, content, createdAt, updatedAt)
+  - `Notification` (id, userId, title, message, type [SYSTEM, ASSIGNMENT, EXAM, LIVE_CLASS], isRead, createdAt)
+- [ ] Implement WebSocket / Socket.IO Gateway in NestJS (`ChatGateway` / `NotificationsGateway`)
+- [ ] Real-time in-classroom chat channel for participants during live sessions
+- [ ] Course announcements and direct student-instructor communication
+- [ ] Notification bell icon and real-time toast alerts in frontend UI
+- [ ] Unread notification counters and mark-as-read endpoints
+- [ ] Unit tests and live WebSocket end-to-end verification

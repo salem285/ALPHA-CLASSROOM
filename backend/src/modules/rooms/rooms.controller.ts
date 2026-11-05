@@ -62,4 +62,49 @@ export class RoomsController {
   async getRoom(@Param('roomId') roomId: string) {
     return this.roomsService.findById(roomId);
   }
+
+  @Post('rooms/:roomId/heartbeat')
+  @Roles(UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  async recordHeartbeat(
+    @Param('roomId') roomId: string,
+    @CurrentUser('id') studentId: string,
+  ) {
+    return this.roomsService.recordHeartbeat(roomId, studentId);
+  }
+
+  @Post('rooms/:roomId/leave')
+  @Roles(UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  async recordLeave(
+    @Param('roomId') roomId: string,
+    @CurrentUser('id') studentId: string,
+  ) {
+    return this.roomsService.recordLeave(roomId, studentId);
+  }
+
+  @Get('rooms/:roomId/attendance')
+  @Roles(UserRole.INSTRUCTOR, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  async getRoomAttendance(
+    @Param('roomId') roomId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.roomsService.getRoomAttendance(roomId, user.id, user.role);
+  }
+
+  @Get('courses/:courseId/my-attendance')
+  @Roles(UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  async getMyAttendance(
+    @Param('courseId') courseId: string,
+    @CurrentUser('id') studentId: string,
+  ) {
+    return this.roomsService.getCourseAttendanceForStudent(courseId, studentId);
+  }
+
+  @Get('courses/:courseId/attendance-sessions')
+  @Roles(UserRole.INSTRUCTOR, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  async getCourseAttendanceSessions(
+    @Param('courseId') courseId: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.roomsService.getCourseAttendanceSessions(courseId, user.id, user.role);
+  }
 }

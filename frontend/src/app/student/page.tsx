@@ -8,7 +8,7 @@ import { api, ApiError } from '@/lib/api';
 import { Course, Enrollment } from '@/types/course';
 import { Assignment } from '@/types/assignment';
 import { Exam, ExamAttempt } from '@/types/exam';
-import { LiveRoom } from '@/types/room';
+import { LiveRoom, StudentCourseAttendance } from '@/types/room';
 import {
   GraduationCap,
   BookOpen,
@@ -35,6 +35,7 @@ import {
   Check,
   Radio,
   Video,
+  UserCheck,
 } from 'lucide-react';
 
 export default function StudentDashboardPage() {
@@ -89,6 +90,11 @@ export default function StudentDashboardPage() {
   // Live Room states
   const [activeRooms, setActiveRooms] = useState<Record<string, LiveRoom | null>>({});
 
+  // Attendance states
+  const [courseAttendanceMap, setCourseAttendanceMap] = useState<Record<string, StudentCourseAttendance>>({});
+  const [selectedCourseAttendanceModal, setSelectedCourseAttendanceModal] = useState<StudentCourseAttendance | null>(null);
+  const [loadingAttendanceModal, setLoadingAttendanceModal] = useState<boolean>(false);
+
   const fetchStudentData = useCallback(async () => {
     setLoadingData(true);
     try {
@@ -99,8 +105,10 @@ export default function StudentDashboardPage() {
       setEnrolledList(enrolled);
       setCatalog(available);
 
-      // Fetch active live rooms for enrolled courses
+      // Fetch active live rooms and attendance for enrolled courses
       const roomsMap: Record<string, LiveRoom | null> = {};
+      const attendanceMap: Record<string, StudentCourseAttendance> = {};
+
       await Promise.all(
         enrolled.map(async (item) => {
           try {
@@ -109,9 +117,17 @@ export default function StudentDashboardPage() {
           } catch {
             roomsMap[item.courseId] = null;
           }
+
+          try {
+            const att = await api.get<StudentCourseAttendance>(`/courses/${item.courseId}/my-attendance`);
+            attendanceMap[item.courseId] = att;
+          } catch {
+            // Silently ignore if not found
+          }
         }),
       );
       setActiveRooms(roomsMap);
+      setCourseAttendanceMap(attendanceMap);
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         setFeedback({ type: 'error', text: `Failed to load courses: ${err.message}` });
@@ -120,6 +136,19 @@ export default function StudentDashboardPage() {
       setLoadingData(false);
     }
   }, []);
+
+  const handleOpenAttendanceModal = async (courseId: string) => {
+    setLoadingAttendanceModal(true);
+    try {
+      const data = await api.get<StudentCourseAttendance>(`/courses/${courseId}/my-attendance`);
+      setSelectedCourseAttendanceModal(data);
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to load attendance report';
+      alert(msg);
+    } finally {
+      setLoadingAttendanceModal(false);
+    }
+  };
 
   const fetchCourseAssignments = async (courseId: string) => {
     setLoadingAssignments(true);
@@ -581,6 +610,34 @@ export default function StudentDashboardPage() {
                         <div className="font-medium text-slate-200 mt-0.5">
                           {item.course?.instructor?.firstName} {item.course?.instructor?.lastName}
                         </div>
+                      </div>
+
+                      {/* Attendance Rate Summary */}
+                      <div className="mt-3.5 p-3 rounded-xl bg-[#0b0e1b] border border-[#1a2038] flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-600/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                            <UserCheck className="w-4 h-4 text-emerald-400" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block">Attendance Rate</span>
+                            <div className="flex items-baseline gap-1 mt-0.5">
+                              <span className="font-extrabold text-white text-xs sm:text-sm">
+                                {courseAttendanceMap[item.courseId]
+                                  ? `${courseAttendanceMap[item.courseId].attendancePercentage}%`
+                                  : '100%'}
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                ({courseAttendanceMap[item.courseId]?.attendedSessions || 0}/{courseAttendanceMap[item.courseId]?.totalSessions || 0} sessions)
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleOpenAttendanceModal(item.courseId)}
+                          className="text-xs px-2.5 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-300 border border-emerald-500/40 font-semibold transition cursor-pointer"
+                        >
+                          View History
+                        </button>
                       </div>
 
                       {/* Active Live Session in Enrolled Course */}
@@ -1288,6 +1345,146 @@ export default function StudentDashboardPage() {
             >
               Continue Learning
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Student Course Attendance Modal */}
+      {selectedCourseAttendanceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-[#12162b] border border-[#2a345e] rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-[#21294c] flex items-center justify-between bg-[#0e1224]">
+              <div>
+                <h3 className="font-bold text-white text-base flex items-center gap-2">
+                  <UserCheck className="w-5 h-5 text-purple-400" />
+                  Live Classroom Attendance Record
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {selectedCourseAttendanceModal.courseTitle} ({selectedCourseAttendanceModal.courseCode})
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedCourseAttendanceModal(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#1a203a] transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Attendance Overview Card */}
+            <div className="p-5 border-b border-[#1c2344] bg-[#0c0f20]">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3.5 rounded-xl bg-[#131835] border border-[#232c52]">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">
+                    Attendance Rate
+                  </div>
+                  <div className="text-2xl font-black text-white mt-1">
+                    {selectedCourseAttendanceModal.attendancePercentage}%
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-[#131835] border border-[#232c52]">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">
+                    Sessions Attended
+                  </div>
+                  <div className="text-2xl font-black text-white mt-1">
+                    {selectedCourseAttendanceModal.attendedSessions}{' '}
+                    <span className="text-sm font-normal text-slate-400">
+                      / {selectedCourseAttendanceModal.totalSessions}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-[#131835] border border-[#232c52]">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400 font-medium">
+                    Standing
+                  </div>
+                  <div className="mt-1">
+                    <span
+                      className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold border ${
+                        selectedCourseAttendanceModal.attendancePercentage >= 80
+                          ? 'bg-emerald-950 text-emerald-300 border-emerald-800/60'
+                          : selectedCourseAttendanceModal.attendancePercentage >= 60
+                          ? 'bg-amber-950 text-amber-300 border-amber-800/60'
+                          : 'bg-rose-950 text-rose-300 border-rose-800/60'
+                      }`}
+                    >
+                      {selectedCourseAttendanceModal.attendancePercentage >= 80
+                        ? 'Good Standing'
+                        : selectedCourseAttendanceModal.attendancePercentage >= 60
+                        ? 'Needs Attention'
+                        : 'At Risk'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Attendance Logs List */}
+            <div className="p-5 flex-1 overflow-y-auto space-y-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Session Logs ({selectedCourseAttendanceModal.records.length})
+              </h4>
+
+              {selectedCourseAttendanceModal.records.length === 0 ? (
+                <div className="text-center py-10 text-slate-400 text-xs">
+                  No live session attendance logs recorded yet for this course.
+                </div>
+              ) : (
+                selectedCourseAttendanceModal.records.map((rec) => (
+                  <div
+                    key={rec.id}
+                    className="p-3.5 rounded-xl bg-[#0f142b] border border-[#1e2547] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div>
+                      <div className="font-semibold text-white text-sm">
+                        {rec.room?.title || 'Live Classroom Session'}
+                      </div>
+                      <div className="text-xs text-slate-400 flex items-center gap-3 mt-1">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                          {new Date(rec.joinedAt).toLocaleDateString()}
+                        </span>
+                        <span>
+                          Joined: {new Date(rec.joinedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {rec.leftAt && (
+                          <span>
+                            Left: {new Date(rec.leftAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-[#1a2040] text-slate-300 border border-[#2b3564] flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-purple-400" />
+                        {rec.durationMinutes} min
+                      </span>
+                      <span
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                          rec.status === 'PRESENT'
+                            ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60'
+                            : 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+                        }`}
+                      >
+                        {rec.status}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="p-4 border-t border-[#21294c] bg-[#0e1224] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedCourseAttendanceModal(null)}
+                className="px-5 py-2 rounded-xl text-xs font-semibold bg-[#1a203a] hover:bg-[#232b50] text-slate-200 transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

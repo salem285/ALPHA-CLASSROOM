@@ -72,6 +72,24 @@ export default function ClassroomPage({ params }: PageProps) {
     }
   }, [authLoading, user, roomId, mounted]);
 
+  // Automated Attendance Heartbeat effect for students
+  useEffect(() => {
+    if (!roomData || !roomId || user?.role !== 'STUDENT') return;
+
+    // Send initial ping to confirm presence
+    api.post(`/rooms/${roomId}/heartbeat`).catch(() => {});
+
+    // Periodic heartbeat every 60 seconds
+    const interval = setInterval(() => {
+      api.post(`/rooms/${roomId}/heartbeat`).catch(() => {});
+    }, 60000);
+
+    return () => {
+      clearInterval(interval);
+      api.post(`/rooms/${roomId}/leave`).catch(() => {});
+    };
+  }, [roomData, roomId, user]);
+
   const handleEndSession = async () => {
     if (!confirm('Are you sure you want to end this live session for all participants?')) {
       return;
@@ -86,8 +104,11 @@ export default function ClassroomPage({ params }: PageProps) {
     }
   };
 
-  const handleLeave = () => {
+  const handleLeave = async () => {
     if (user?.role === 'STUDENT') {
+      try {
+        await api.post(`/rooms/${roomId}/leave`);
+      } catch {}
       router.push('/student');
     } else {
       router.push('/instructor');

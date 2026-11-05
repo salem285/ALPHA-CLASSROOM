@@ -28,6 +28,7 @@ model User {
   enrollments       Enrollment[]  @relation("StudentEnrollments")
   submissions       Submission[]  @relation("StudentSubmissions")
   examAttempts      ExamAttempt[] @relation("StudentExamAttempts")
+  attendanceRecords AttendanceRecord[] @relation("StudentAttendance")
 
   @@map("users")
 }
@@ -148,15 +149,34 @@ model ExamAttempt {
 }
 
 model LiveRoom {
-  id        String    @id @default(uuid())
-  courseId  String
-  course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  title     String
-  roomName  String    @unique
-  isLive    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  endedAt   DateTime?
+  id                String             @id @default(uuid())
+  courseId          String
+  course            Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title             String
+  roomName          String             @unique
+  isLive            Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  endedAt           DateTime?
+  attendanceRecords AttendanceRecord[]
 
   @@map("live_rooms")
 }
+
+model AttendanceRecord {
+  id              String    @id @default(uuid())
+  roomId          String
+  room            LiveRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         User      @relation("StudentAttendance", fields: [studentId], references: [id], onDelete: Cascade)
+  joinedAt        DateTime  @default(now())
+  leftAt          DateTime?
+  durationMinutes Int       @default(0)
+  status          String    @default("PRESENT") // PRESENT, LATE, ABSENT
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([roomId, studentId])
+  @@map("attendance_records")
+}
+
 

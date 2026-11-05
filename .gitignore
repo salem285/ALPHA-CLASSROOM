@@ -43,4 +43,5 @@ coverage/
 # Binaries & Tools
 tools/
 *.exe
+scratch/
 
