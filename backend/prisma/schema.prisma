@@ -54,6 +54,7 @@ model Course {
   recordings      Recording[]
   announcements   Announcement[]
   discussionPosts DiscussionPost[]
+  materials       CourseMaterial[]
 
   @@map("courses")
 }
@@ -245,6 +246,21 @@ model DiscussionPost {
   updatedAt DateTime         @updatedAt
 
   @@map("discussion_posts")
+}
+
+model CourseMaterial {
+  id          String   @id @default(uuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  fileUrl     String
+  fileName    String
+  fileType    String   // "PDF", "ZIP", "DOC", "OTHER"
+  sizeBytes   BigInt   @default(0)
+  createdAt   DateTime @default(now())
+
+  @@map("course_materials")
 }
 
 

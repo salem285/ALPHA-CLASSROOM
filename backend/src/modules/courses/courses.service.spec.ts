@@ -19,6 +19,30 @@ describe('CoursesService', () => {
         findMany: vi.fn(),
         create: vi.fn(),
       },
+      assignment: {
+        count: vi.fn(),
+        findMany: vi.fn(),
+      },
+      submission: {
+        count: vi.fn(),
+        findMany: vi.fn(),
+      },
+      exam: {
+        count: vi.fn(),
+        findMany: vi.fn(),
+      },
+      examAttempt: {
+        count: vi.fn(),
+        findMany: vi.fn(),
+      },
+      liveRoom: {
+        count: vi.fn(),
+        findMany: vi.fn(),
+      },
+      attendanceRecord: {
+        count: vi.fn(),
+        findMany: vi.fn(),
+      },
     };
 
     coursesService = new CoursesService(mockPrisma as any);
@@ -175,6 +199,94 @@ describe('CoursesService', () => {
       });
       expect(res.enrollment.status).toBe('ACTIVE');
       expect(res.message).toContain('Data Structures');
+    });
+  });
+
+  describe('calculateStudentProgress', () => {
+    it('should calculate weighted progress: 40% assignments, 40% exams, 20% attendance', async () => {
+      mockPrisma.course.findUnique.mockResolvedValue({ id: 'c-1', title: 'Calculus' });
+      mockPrisma.enrollment.findUnique.mockResolvedValue({ id: 'e-1', status: 'ACTIVE' });
+
+      // 1 of 2 assignments completed -> 50% * 40 = 20
+      mockPrisma.assignment.count.mockResolvedValue(2);
+      mockPrisma.submission.count.mockResolvedValue(1);
+
+      // 1 of 1 exam completed -> 100% * 40 = 40
+      mockPrisma.exam.count.mockResolvedValue(1);
+      mockPrisma.examAttempt.count.mockResolvedValue(1);
+
+      // 1 of 2 live sessions attended -> 50% * 20 = 10
+      mockPrisma.liveRoom.count.mockResolvedValue(2);
+      mockPrisma.attendanceRecord.count.mockResolvedValue(1);
+
+      // Expected overall: 20 + 40 + 10 = 70%
+      const progress = await coursesService.calculateStudentProgress('c-1', 'student-1');
+
+      expect(progress.completedAssignments).toBe(1);
+      expect(progress.totalAssignments).toBe(2);
+      expect(progress.completedExams).toBe(1);
+      expect(progress.totalExams).toBe(1);
+      expect(progress.attendanceRate).toBe(50);
+      expect(progress.overallPercentage).toBe(70);
+    });
+  });
+
+  describe('exportGradesCsv', () => {
+    it('should generate formatted CSV report of student grades', async () => {
+      mockPrisma.course.findUnique.mockResolvedValue({
+        id: 'c-1',
+        code: 'CS101',
+        instructorId: 'inst-1',
+        enrollments: [
+          {
+            student: { id: 's-1', firstName: 'John', lastName: 'Doe', email: 'john@example.com' },
+          },
+        ],
+        assignments: [
+          { id: 'a-1', submissions: [{ studentId: 's-1', score: 90 }] },
+        ],
+        exams: [
+          { id: 'ex-1', attempts: [{ studentId: 's-1', score: 80 }] },
+        ],
+      });
+
+      const result = await coursesService.exportGradesCsv('c-1', 'inst-1', UserRole.INSTRUCTOR);
+
+      expect(result.filename).toBe('course_CS101_grades.csv');
+      expect(result.csv).toContain('Student Name,Email,Assignments Completed');
+      expect(result.csv).toContain('"John Doe","john@example.com",1/1,90.0,1/1,80.0,85.0');
+    });
+  });
+
+  describe('exportAttendanceCsv', () => {
+    it('should generate formatted CSV report of session attendance', async () => {
+      mockPrisma.course.findUnique.mockResolvedValue({
+        id: 'c-1',
+        code: 'CS101',
+        instructorId: 'inst-1',
+        liveRooms: [
+          {
+            id: 'r-1',
+            title: 'Week 1 Lecture',
+            attendanceRecords: [
+              {
+                student: { firstName: 'Alice', lastName: 'Smith', email: 'alice@example.com' },
+                status: 'PRESENT',
+                joinedAt: new Date('2026-11-01T10:00:00Z'),
+                leftAt: new Date('2026-11-01T11:00:00Z'),
+                durationMinutes: 60,
+              },
+            ],
+          },
+        ],
+      });
+
+      const result = await coursesService.exportAttendanceCsv('c-1', 'inst-1', UserRole.INSTRUCTOR);
+
+      expect(result.filename).toBe('course_CS101_attendance.csv');
+      expect(result.csv).toContain('Student Name,Email,Session Room,Session Date');
+      expect(result.csv).toContain('"Alice Smith","alice@example.com","Week 1 Lecture",2026-11-01,PRESENT');
+      expect(result.csv).toContain(',60');
     });
   });
 });

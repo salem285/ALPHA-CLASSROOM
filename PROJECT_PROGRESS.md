@@ -23,6 +23,7 @@
 | **Phase 10** | Course Announcements, Discussion Q&A & Notifications | **Completed** | 2026-11-05 |
 | **Phase 11** | Session Recording & Lecture Archive System | **Completed** | 2026-11-05 |
 | **Phase 12** | Polish, Security Audit & Production Readiness | **Completed** | 2026-11-05 |
+| **Phase 13** | Course Materials Library, Student Progress & CSV Export | **Completed** | 2026-11-05 |
 
 ---
 
@@ -404,3 +405,51 @@
   - Production builds compiled with 0 errors for both backend (`npm run build`) and frontend Next.js standalone (`npm run build`)
   - Live HTTP query verified `GET /api/v1/health` returning valid JSON with `database: { status: "up" }`
   - Automated E2E verification confirmed Phase 10 discussion and announcements flow still passes 100% with helmet and throttler active
+
+---
+
+## Phase 13 Execution Checklist
+- [x] Expand Prisma schema with `CourseMaterial` model:
+  - `CourseMaterial` (id, courseId -> Course onDelete Cascade, title, description?, fileUrl, fileName, fileType, sizeBytes BigInt @default(0), createdAt)
+  - Added cascade relation `materials CourseMaterial[]` to `Course`
+- [x] Execute migration `20261105115411_add_course_materials` in PostgreSQL and regenerate Prisma client
+- [x] Backend Materials Module (`backend/src/modules/materials`):
+  - Configured multer disk storage in `uploads/materials` with 50MB file size limits and file extension filters (`pdf`, `zip`, `rar`, `7z`, `tar`, `gz`, `doc`, `docx`, `ppt`, `pptx`, `xls`, `xlsx`, `txt`)
+  - Configured BigInt serialization utility converting `sizeBytes` to Number
+  - `POST /api/v1/courses/:courseId/materials` (INSTRUCTOR owner, ADMIN): uploads physical file, automatically detects `fileType` (`PDF`, `ZIP`, `DOC`, `OTHER`), and saves material record
+  - `GET /api/v1/courses/:courseId/materials` (Enrolled students, Instructor, Admin): returns course materials list ordered by `createdAt: desc`
+  - `DELETE /api/v1/materials/:id` (INSTRUCTOR owner, ADMIN): unlinks file from disk and deletes DB record
+- [x] Backend Student Progress Tracking (`backend/src/modules/courses`):
+  - `GET /api/v1/courses/:courseId/my-progress` (STUDENT):
+    * Calculates 40% weighted completion on submitted assignments ratio
+    * Calculates 40% weighted completion on submitted exam attempts ratio
+    * Calculates 20% weighted completion on classroom attendance rate
+    * Returns `{ overallPercentage, completedAssignments, totalAssignments, completedExams, totalExams, attendanceRate }`
+- [x] Backend CSV Export Endpoints (`backend/src/modules/courses`):
+  - `GET /api/v1/courses/:courseId/export/grades` (INSTRUCTOR owner, ADMIN): streams formatted CSV report containing Student Name, Email, Assignments Completed/Average, Exams Completed/Average, and Overall Average Score
+  - `GET /api/v1/courses/:courseId/export/attendance` (INSTRUCTOR owner, ADMIN): streams formatted CSV report containing Student Name, Email, Session Room, Session Date, Status, Join/Left Timestamps, and Duration (Minutes)
+- [x] Backend Unit Tests:
+  - Added `materials.service.spec.ts` (11 unit tests passing) testing file type detection, create with BigInt formatting, enrollment checks, and file deletion
+  - Added tests in `courses.service.spec.ts` for progress formula calculations and CSV exports
+  - Total backend tests: 101 tests passed across 11 test suites
+- [x] Frontend Student Dashboard (`frontend/src/app/student/page.tsx`):
+  - Enrolled course cards display a sleek gradient Progress Bar showing `{overallPercentage}%` completed with HW, Exam, and Attendance count breakdown
+  - Added "Materials / الملازم" quick button on course cards
+  - Dedicated "Materials / الملازم" tab inside Course Details modal with file type badges, formatted sizes (KB/MB), upload dates, and direct download buttons
+- [x] Frontend Instructor Dashboard (`frontend/src/app/instructor/page.tsx`):
+  - Added "Materials / الملازم" navigation tab with course selector and upload modal
+  - In "Assignments & Grading" tab: added "Export Grades (CSV)" button with instant browser file download
+  - In "Attendance Reports" tab: added "Export Attendance (CSV)" button with instant browser file download
+  - Modal to upload course materials supporting title, description, and file selection
+  - Material cards with download actions and delete button
+- [x] Verification & Integrity Checks:
+  - All 101 backend unit tests passed (`vitest run`)
+  - Production builds compiled with 0 errors for both backend (`npm run build`) and frontend (`npm run build`)
+  - Automated E2E verification test (`scratch/test_phase13_materials_progress.ps1`):
+    1. Instructor uploads PDF material via multipart/form-data
+    2. Enrolled student fetches course materials and verifies metadata
+    3. Verified static download URL returns HTTP 200 OK
+    4. Student queries progress calculation endpoint (verified 40/40/20 formula)
+    5. Instructor downloads CSV grade report (verified headers and student record)
+    6. Instructor downloads CSV attendance report (verified headers)
+    7. Instructor deletes material (record removed and file unlinked)

@@ -45,23 +45,41 @@ import {
   MessageSquare,
   CornerDownRight,
   Send,
+  FolderDown,
+  File,
+  FileArchive,
+  UploadCloud,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Recording } from '@/types/recording';
 import { Announcement } from '@/types/announcement';
 import { DiscussionPost } from '@/types/discussion';
+import { CourseMaterial } from '@/types/material';
 import NotificationsPopover from '@/components/notifications-popover';
 
 export default function InstructorDashboardPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'courses' | 'assignments' | 'exams' | 'attendance' | 'recordings' | 'announcements' | 'discussions'>('courses');
+  const [activeTab, setActiveTab] = useState<'courses' | 'assignments' | 'exams' | 'attendance' | 'recordings' | 'materials' | 'announcements' | 'discussions'>('courses');
   const [courses, setCourses] = useState<Course[]>([]);
   const [loadingData, setLoadingData] = useState<boolean>(true);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [formSubmitting, setFormSubmitting] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+
+  // Materials states
+  const [materials, setMaterials] = useState<CourseMaterial[]>([]);
+  const [loadingMaterials, setLoadingMaterials] = useState<boolean>(false);
+  const [isUploadMaterialOpen, setIsUploadMaterialOpen] = useState<boolean>(false);
+  const [materialTitle, setMaterialTitle] = useState<string>('');
+  const [materialDescription, setMaterialDescription] = useState<string>('');
+  const [materialFile, setMaterialFile] = useState<File | null>(null);
+  const [submittingMaterial, setSubmittingMaterial] = useState<boolean>(false);
+  const [deletingMaterialId, setDeletingMaterialId] = useState<string | null>(null);
+  const [exportingGrades, setExportingGrades] = useState<boolean>(false);
+  const [exportingAttendance, setExportingAttendance] = useState<boolean>(false);
 
   // Announcements states
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -313,6 +331,111 @@ export default function InstructorDashboardPage() {
     return `${backendBase}/api/v1/recordings/${recording.id}/stream`;
   };
 
+  const fetchMaterials = useCallback(async (courseId: string) => {
+    setLoadingMaterials(true);
+    try {
+      const data = await api.get<CourseMaterial[]>(`/courses/${courseId}/materials`);
+      setMaterials(data);
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to load materials';
+      setFeedback({ type: 'error', text: msg });
+    } finally {
+      setLoadingMaterials(false);
+    }
+  }, []);
+
+  const handleUploadMaterial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCourseId || !materialFile || !materialTitle.trim()) {
+      alert('Please select a course, provide a title, and choose a file');
+      return;
+    }
+    setSubmittingMaterial(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', materialFile);
+      formData.append('title', materialTitle.trim());
+      if (materialDescription.trim()) {
+        formData.append('description', materialDescription.trim());
+      }
+
+      const created = await api.post<CourseMaterial>(
+        `/courses/${selectedCourseId}/materials`,
+        formData,
+      );
+      setMaterials((prev) => [created, ...prev]);
+      setIsUploadMaterialOpen(false);
+      setMaterialTitle('');
+      setMaterialDescription('');
+      setMaterialFile(null);
+      setFeedback({ type: 'success', text: 'Course material uploaded successfully!' });
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to upload material';
+      alert(msg);
+    } finally {
+      setSubmittingMaterial(false);
+    }
+  };
+
+  const handleDeleteMaterial = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this course material?')) return;
+    setDeletingMaterialId(id);
+    try {
+      await api.delete(`/materials/${id}`);
+      setMaterials((prev) => prev.filter((m) => m.id !== id));
+      setFeedback({ type: 'success', text: 'Material deleted successfully.' });
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to delete material';
+      setFeedback({ type: 'error', text: msg });
+    } finally {
+      setDeletingMaterialId(null);
+    }
+  };
+
+  const handleExportGradesCsv = async (courseId: string) => {
+    setExportingGrades(true);
+    try {
+      const csvText = await api.get<string>(`/courses/${courseId}/export/grades`);
+      const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `course_${courseId.slice(0, 8)}_grades.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setFeedback({ type: 'success', text: 'Grades CSV report exported successfully!' });
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to export grades CSV';
+      alert(msg);
+    } finally {
+      setExportingGrades(false);
+    }
+  };
+
+  const handleExportAttendanceCsv = async (courseId: string) => {
+    setExportingAttendance(true);
+    try {
+      const csvText = await api.get<string>(`/courses/${courseId}/export/attendance`);
+      const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `course_${courseId.slice(0, 8)}_attendance.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setFeedback({ type: 'success', text: 'Attendance CSV report exported successfully!' });
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to export attendance CSV';
+      alert(msg);
+    } finally {
+      setExportingAttendance(false);
+    }
+  };
+
   const fetchAnnouncements = useCallback(async (courseId: string) => {
     setLoadingAnnouncements(true);
     try {
@@ -414,6 +537,8 @@ export default function InstructorDashboardPage() {
         fetchAttendanceSessions(selectedCourseId);
       } else if (activeTab === 'recordings') {
         fetchRecordings(selectedCourseId);
+      } else if (activeTab === 'materials') {
+        fetchMaterials(selectedCourseId);
       } else if (activeTab === 'announcements') {
         fetchAnnouncements(selectedCourseId);
       } else if (activeTab === 'discussions') {
@@ -427,6 +552,7 @@ export default function InstructorDashboardPage() {
     fetchExams,
     fetchAttendanceSessions,
     fetchRecordings,
+    fetchMaterials,
     fetchAnnouncements,
     fetchDiscussions,
   ]);
@@ -862,6 +988,18 @@ export default function InstructorDashboardPage() {
             </button>
 
             <button
+              onClick={() => setActiveTab('materials')}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'materials'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-[#191f3a]'
+              }`}
+            >
+              <FolderDown className="w-3.5 h-3.5" />
+              Materials / الملازم ({materials.length})
+            </button>
+
+            <button
               onClick={() => setActiveTab('announcements')}
               className={`px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-2 ${
                 activeTab === 'announcements'
@@ -1091,6 +1229,16 @@ export default function InstructorDashboardPage() {
                         <button
                           onClick={() => {
                             setSelectedCourseId(course.id);
+                            setActiveTab('materials');
+                          }}
+                          className="text-xs px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 font-medium transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <FolderDown className="w-3 h-3" />
+                          Materials
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedCourseId(course.id);
                             setActiveTab('announcements');
                           }}
                           className="text-xs px-2.5 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 font-medium transition flex items-center gap-1 cursor-pointer"
@@ -1145,13 +1293,26 @@ export default function InstructorDashboardPage() {
                     </select>
                   </div>
 
-                  <button
-                    onClick={() => setIsCreateAssignmentOpen(true)}
-                    className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 px-4 rounded-xl text-xs transition shadow-md shadow-purple-900/30 flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
-                  >
-                    <PlusCircle className="w-4 h-4" />
-                    Create Assignment
-                  </button>
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    {selectedCourseId && (
+                      <button
+                        onClick={() => handleExportGradesCsv(selectedCourseId)}
+                        disabled={exportingGrades}
+                        className="bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-300 border border-emerald-500/40 font-semibold py-2 px-3.5 rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        title="Download CSV Gradebook report"
+                      >
+                        <FileSpreadsheet className={`w-4 h-4 ${exportingGrades ? 'animate-bounce' : ''}`} />
+                        <span>Export Grades (CSV)</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setIsCreateAssignmentOpen(true)}
+                      className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 px-4 rounded-xl text-xs transition shadow-md shadow-purple-900/30 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      Create Assignment
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-6">
@@ -1392,16 +1553,29 @@ export default function InstructorDashboardPage() {
                     </select>
                   </div>
 
-                  {selectedCourseId && (
-                    <button
-                      onClick={() => fetchAttendanceSessions(selectedCourseId)}
-                      disabled={loadingAttendance}
-                      className="text-xs px-3 py-2 rounded-xl border border-[#262e52] hover:bg-[#1a203a] text-slate-200 transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${loadingAttendance ? 'animate-spin' : ''}`} />
-                      Refresh Sessions
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    {selectedCourseId && (
+                      <button
+                        onClick={() => handleExportAttendanceCsv(selectedCourseId)}
+                        disabled={exportingAttendance}
+                        className="bg-emerald-600/20 hover:bg-emerald-600/35 text-emerald-300 border border-emerald-500/40 font-semibold py-2 px-3.5 rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        title="Download CSV Attendance report"
+                      >
+                        <FileSpreadsheet className={`w-4 h-4 ${exportingAttendance ? 'animate-bounce' : ''}`} />
+                        <span>Export Attendance (CSV)</span>
+                      </button>
+                    )}
+                    {selectedCourseId && (
+                      <button
+                        onClick={() => fetchAttendanceSessions(selectedCourseId)}
+                        disabled={loadingAttendance}
+                        className="text-xs px-3 py-2 rounded-xl border border-[#262e52] hover:bg-[#1a203a] text-slate-200 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${loadingAttendance ? 'animate-spin' : ''}`} />
+                        Refresh Sessions
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Sessions List */}
@@ -1603,6 +1777,168 @@ export default function InstructorDashboardPage() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Course Materials */}
+        {activeTab === 'materials' && (
+          <div className="space-y-6">
+            {courses.length === 0 ? (
+              <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center">
+                <FolderDown className="w-12 h-12 text-purple-400/40 mx-auto mb-3" />
+                <h4 className="text-base font-bold text-white">Create a Course First</h4>
+              </div>
+            ) : (
+              <div>
+                {/* Course Selector & Actions Bar */}
+                <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Selected Course:
+                    </label>
+                    <select
+                      value={selectedCourseId || ''}
+                      onChange={(e) => setSelectedCourseId(e.target.value)}
+                      className="bg-[#0b0e1b] border border-[#262e52] rounded-xl px-3 py-2 text-xs font-medium text-slate-200 focus:outline-none focus:border-purple-500 transition"
+                    >
+                      {courses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} — {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    {selectedCourseId && (
+                      <button
+                        onClick={() => fetchMaterials(selectedCourseId)}
+                        disabled={loadingMaterials}
+                        className="text-xs px-2.5 py-2 rounded-xl border border-[#262e52] hover:bg-[#1a203a] text-slate-200 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${loadingMaterials ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setIsUploadMaterialOpen(true)}
+                      className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 px-4 rounded-xl text-xs transition shadow-md shadow-purple-900/30 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <UploadCloud className="w-4 h-4" />
+                      Upload Material / رفع ملزمة
+                    </button>
+                  </div>
+                </div>
+
+                {/* Materials Grid */}
+                <div className="mt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <FolderDown className="w-4 h-4 text-amber-400" />
+                      Materials for {selectedCourse?.code || 'Course'} ({materials.length})
+                    </h3>
+                  </div>
+
+                  {loadingMaterials ? (
+                    <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center text-slate-400">
+                      <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                      <span className="text-xs">Loading course materials...</span>
+                    </div>
+                  ) : materials.length === 0 ? (
+                    <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center">
+                      <FolderDown className="w-10 h-10 text-slate-600 mx-auto mb-2" />
+                      <p className="font-semibold text-slate-200 text-sm">No Materials Uploaded Yet</p>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto mb-4">
+                        Upload lecture slides, syllabus, homework templates, or code archives for your students.
+                      </p>
+                      <button
+                        onClick={() => setIsUploadMaterialOpen(true)}
+                        className="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-1.5 px-3.5 rounded-xl text-xs transition inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <UploadCloud className="w-3.5 h-3.5" />
+                        Upload First Material
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                      {materials.map((mat) => {
+                        const backendBase = process.env.NEXT_PUBLIC_API_URL
+                          ? process.env.NEXT_PUBLIC_API_URL.replace('/api/v1', '')
+                          : 'http://localhost:4000';
+                        const downloadUrl = mat.fileUrl.startsWith('http')
+                          ? mat.fileUrl
+                          : `${backendBase}${mat.fileUrl}`;
+
+                        return (
+                          <div
+                            key={mat.id}
+                            className="bg-[#12162b] border border-[#21294c] hover:border-amber-500/40 rounded-2xl p-5 shadow-lg transition flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between mb-3">
+                                <span
+                                  className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                    mat.fileType === 'PDF'
+                                      ? 'bg-rose-950/80 text-rose-300 border-rose-800/60'
+                                      : mat.fileType === 'ZIP'
+                                      ? 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+                                      : mat.fileType === 'DOC'
+                                      ? 'bg-blue-950/80 text-blue-300 border-blue-800/60'
+                                      : 'bg-purple-950/80 text-purple-300 border-purple-800/60'
+                                  }`}
+                                >
+                                  {mat.fileType}
+                                </span>
+                                <span className="text-xs text-slate-400 font-mono">
+                                  {formatFileSize(mat.sizeBytes)}
+                                </span>
+                              </div>
+
+                              <h4 className="font-bold text-white text-base leading-snug">
+                                {mat.title}
+                              </h4>
+                              {mat.description && (
+                                <p className="text-xs text-slate-400 mt-2 line-clamp-2">
+                                  {mat.description}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="mt-5 pt-4 border-t border-[#1c223c] flex items-center justify-between gap-2">
+                              <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {new Date(mat.createdAt).toLocaleDateString()}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={downloadUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download={mat.fileName}
+                                  className="bg-amber-600/20 hover:bg-amber-600/35 text-amber-300 border border-amber-500/40 font-semibold py-1.5 px-2.5 rounded-xl text-xs transition flex items-center gap-1 cursor-pointer"
+                                  title="Download material"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Download</span>
+                                </a>
+                                <button
+                                  onClick={() => handleDeleteMaterial(mat.id)}
+                                  disabled={deletingMaterialId === mat.id}
+                                  className="bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 border border-rose-800/50 font-semibold py-1.5 px-2.5 rounded-xl text-xs transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                  title="Delete material"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -3002,6 +3338,110 @@ export default function InstructorDashboardPage() {
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>{submittingAnnouncement ? 'Publishing...' : 'Publish & Dispatch Alerts'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Upload Course Material */}
+      {isUploadMaterialOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="bg-[#12162b] border border-[#2a345e] rounded-2xl w-full max-w-lg p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-4 border-b border-[#21294c] mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-600/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <UploadCloud className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">Upload Course Material</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Upload syllabus, lecture slides, documents, or code archives
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsUploadMaterialOpen(false)}
+                className="text-slate-400 hover:text-white transition p-1 rounded-lg hover:bg-[#1a203a] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUploadMaterial} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Target Course
+                </label>
+                <select
+                  value={selectedCourseId || ''}
+                  onChange={(e) => setSelectedCourseId(e.target.value)}
+                  className="w-full bg-[#0c0e1b] border border-[#252c4e] rounded-xl py-2 px-3 text-xs text-slate-100 focus:outline-none focus:border-amber-500 transition"
+                >
+                  {courses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.code} — {c.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Material Title / عنوان المرفق
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Week 1 Lecture Slides & Code"
+                  value={materialTitle}
+                  onChange={(e) => setMaterialTitle(e.target.value)}
+                  className="w-full bg-[#0c0e1b] border border-[#252c4e] rounded-xl py-2 px-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Description / ملاحظات (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Additional context or instructions regarding this material..."
+                  value={materialDescription}
+                  onChange={(e) => setMaterialDescription(e.target.value)}
+                  className="w-full bg-[#0c0e1b] border border-[#252c4e] rounded-xl py-2 px-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Attach File (PDF, ZIP, DOC, PPT, up to 50MB)
+                </label>
+                <input
+                  type="file"
+                  required
+                  onChange={(e) => setMaterialFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-600/20 file:text-amber-300 hover:file:bg-amber-600/30 file:cursor-pointer cursor-pointer border border-[#252c4e] rounded-xl bg-[#0c0e1b] p-1.5"
+                />
+              </div>
+
+              <div className="pt-4 border-t border-[#21294c] flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsUploadMaterialOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingMaterial || !materialFile}
+                  className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-semibold py-2 px-5 rounded-xl text-xs transition shadow-lg shadow-amber-900/30 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>{submittingMaterial ? 'Uploading...' : 'Upload & Save'}</span>
                 </button>
               </div>
             </form>

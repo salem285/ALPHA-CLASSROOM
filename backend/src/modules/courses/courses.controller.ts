@@ -5,7 +5,9 @@ import {
   Param,
   Body,
   UseGuards,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { CoursesService } from './courses.service.js';
 import { CreateCourseDto } from './dto/create-course.dto.js';
 import { EnrollCourseDto } from './dto/enroll-course.dto.js';
@@ -69,5 +71,45 @@ export class CoursesController {
     @CurrentUser('id') studentId: string,
   ) {
     return this.coursesService.enroll(courseId, studentId, dto);
+  }
+
+  @Get(':courseId/my-progress')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.STUDENT, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  async getStudentProgress(
+    @Param('courseId') courseId: string,
+    @CurrentUser('id') studentId: string,
+  ) {
+    return this.coursesService.calculateStudentProgress(courseId, studentId);
+  }
+
+  @Get(':courseId/export/grades')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.INSTRUCTOR, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  async exportGradesCsv(
+    @Param('courseId') courseId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: UserRole,
+    @Res() res: Response,
+  ) {
+    const { filename, csv } = await this.coursesService.exportGradesCsv(courseId, userId, userRole);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(200).send(csv);
+  }
+
+  @Get(':courseId/export/attendance')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.INSTRUCTOR, UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  async exportAttendanceCsv(
+    @Param('courseId') courseId: string,
+    @CurrentUser('id') userId: string,
+    @CurrentUser('role') userRole: UserRole,
+    @Res() res: Response,
+  ) {
+    const { filename, csv } = await this.coursesService.exportAttendanceCsv(courseId, userId, userRole);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(200).send(csv);
   }
 }

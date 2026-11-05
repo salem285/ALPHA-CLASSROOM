@@ -14,6 +14,7 @@ import { RecordingsModule } from './modules/recordings/recordings.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
 import { AnnouncementsModule } from './modules/announcements/announcements.module.js';
 import { DiscussionsModule } from './modules/discussions/discussions.module.js';
+import { MaterialsModule } from './modules/materials/materials.module.js';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { DiscussionsModule } from './modules/discussions/discussions.module.js';
     NotificationsModule,
     AnnouncementsModule,
     DiscussionsModule,
+    MaterialsModule,
   ],
   controllers: [AppController],
   providers: [

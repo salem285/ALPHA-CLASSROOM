@@ -12,6 +12,7 @@ import { LiveRoom, StudentCourseAttendance } from '@/types/room';
 import { Recording } from '@/types/recording';
 import { Announcement } from '@/types/announcement';
 import { DiscussionPost } from '@/types/discussion';
+import { CourseMaterial, StudentCourseProgress } from '@/types/material';
 import NotificationsPopover from '@/components/notifications-popover';
 import {
   GraduationCap,
@@ -47,6 +48,9 @@ import {
   Pin,
   MessageSquare,
   CornerDownRight,
+  FolderDown,
+  File,
+  FileArchive,
 } from 'lucide-react';
 
 export default function StudentDashboardPage() {
@@ -67,7 +71,7 @@ export default function StudentDashboardPage() {
 
   // Coursework / Course Details modal states
   const [activeCourseForAssignments, setActiveCourseForAssignments] = useState<Course | null>(null);
-  const [courseModalTab, setCourseModalTab] = useState<'assignments' | 'exams' | 'recordings' | 'announcements' | 'discussions'>('assignments');
+  const [courseModalTab, setCourseModalTab] = useState<'assignments' | 'exams' | 'recordings' | 'materials' | 'announcements' | 'discussions'>('assignments');
   const [courseAssignments, setCourseAssignments] = useState<Assignment[]>([]);
   const [loadingAssignments, setLoadingAssignments] = useState<boolean>(false);
   const [courseExams, setCourseExams] = useState<Exam[]>([]);
@@ -75,6 +79,13 @@ export default function StudentDashboardPage() {
   const [courseRecordings, setCourseRecordings] = useState<Recording[]>([]);
   const [loadingRecordings, setLoadingRecordings] = useState<boolean>(false);
   const [activeRecordingForPlayback, setActiveRecordingForPlayback] = useState<Recording | null>(null);
+
+  // Materials states
+  const [courseMaterials, setCourseMaterials] = useState<CourseMaterial[]>([]);
+  const [loadingMaterials, setLoadingMaterials] = useState<boolean>(false);
+
+  // Progress states
+  const [courseProgressMap, setCourseProgressMap] = useState<Record<string, StudentCourseProgress>>({});
 
   // Announcements and Discussions states
   const [courseAnnouncements, setCourseAnnouncements] = useState<Announcement[]>([]);
@@ -129,9 +140,10 @@ export default function StudentDashboardPage() {
       setEnrolledList(enrolled);
       setCatalog(available);
 
-      // Fetch active live rooms and attendance for enrolled courses
+      // Fetch active live rooms, attendance, and progress for enrolled courses
       const roomsMap: Record<string, LiveRoom | null> = {};
       const attendanceMap: Record<string, StudentCourseAttendance> = {};
+      const progressMap: Record<string, StudentCourseProgress> = {};
 
       await Promise.all(
         enrolled.map(async (item) => {
@@ -148,10 +160,18 @@ export default function StudentDashboardPage() {
           } catch {
             // Silently ignore if not found
           }
+
+          try {
+            const prog = await api.get<StudentCourseProgress>(`/courses/${item.courseId}/my-progress`);
+            progressMap[item.courseId] = prog;
+          } catch {
+            // Silently ignore if not found
+          }
         }),
       );
       setActiveRooms(roomsMap);
       setCourseAttendanceMap(attendanceMap);
+      setCourseProgressMap(progressMap);
     } catch (err: unknown) {
       if (err instanceof ApiError) {
         setFeedback({ type: 'error', text: `Failed to load courses: ${err.message}` });
@@ -236,6 +256,18 @@ export default function StudentDashboardPage() {
     }
   };
 
+  const fetchCourseMaterials = async (courseId: string) => {
+    setLoadingMaterials(true);
+    try {
+      const data = await api.get<CourseMaterial[]>(`/courses/${courseId}/materials`);
+      setCourseMaterials(data);
+    } catch {
+      setCourseMaterials([]);
+    } finally {
+      setLoadingMaterials(false);
+    }
+  };
+
   const handleCreateQuestion = async () => {
     if (!activeCourseForAssignments || !newQuestionContent.trim()) return;
     setSubmittingQuestion(true);
@@ -290,6 +322,7 @@ export default function StudentDashboardPage() {
       fetchCourseAssignments(course.id),
       fetchCourseExams(course.id),
       fetchCourseRecordings(course.id),
+      fetchCourseMaterials(course.id),
       fetchCourseAnnouncements(course.id),
       fetchCourseDiscussions(course.id),
     ]);
@@ -302,6 +335,20 @@ export default function StudentDashboardPage() {
       fetchCourseAssignments(course.id),
       fetchCourseExams(course.id),
       fetchCourseRecordings(course.id),
+      fetchCourseMaterials(course.id),
+      fetchCourseAnnouncements(course.id),
+      fetchCourseDiscussions(course.id),
+    ]);
+  };
+
+  const handleOpenMaterials = async (course: Course) => {
+    setActiveCourseForAssignments(course);
+    setCourseModalTab('materials');
+    await Promise.all([
+      fetchCourseAssignments(course.id),
+      fetchCourseExams(course.id),
+      fetchCourseRecordings(course.id),
+      fetchCourseMaterials(course.id),
       fetchCourseAnnouncements(course.id),
       fetchCourseDiscussions(course.id),
     ]);
@@ -787,6 +834,40 @@ export default function StudentDashboardPage() {
                         </button>
                       </div>
 
+                      {/* Course Completion Progress Bar */}
+                      {courseProgressMap[item.courseId] && (
+                        <div className="mt-3.5 p-3 rounded-xl bg-[#0b0e1b] border border-[#1a2038] text-xs">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" />
+                              Course Progress / الإنجاز
+                            </span>
+                            <span className="font-extrabold text-purple-300 text-xs">
+                              {courseProgressMap[item.courseId].overallPercentage}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-[#161b33] rounded-full h-2 overflow-hidden border border-white/5">
+                            <div
+                              className="bg-gradient-to-r from-purple-600 to-indigo-500 h-2 rounded-full transition-all duration-500"
+                              style={{ width: `${courseProgressMap[item.courseId].overallPercentage}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 mt-2">
+                            <span>
+                              HW: {courseProgressMap[item.courseId].completedAssignments}/
+                              {courseProgressMap[item.courseId].totalAssignments}
+                            </span>
+                            <span>
+                              Exams: {courseProgressMap[item.courseId].completedExams}/
+                              {courseProgressMap[item.courseId].totalExams}
+                            </span>
+                            <span>
+                              Att: {courseProgressMap[item.courseId].attendanceRate}%
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Active Live Session in Enrolled Course */}
                       {activeRooms[item.courseId] && (
                         <div className="mt-4 p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 flex flex-col gap-2">
@@ -815,10 +896,18 @@ export default function StudentDashboardPage() {
                         <Calendar className="w-3 h-3" />
                         {new Date(item.enrolledAt).toLocaleDateString()}
                       </span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenMaterials(item.course)}
+                          className="bg-amber-600/20 hover:bg-amber-600/35 text-amber-200 border border-amber-500/40 px-2.5 py-1.5 rounded-xl font-semibold text-xs transition flex items-center gap-1 cursor-pointer shadow-sm"
+                          title="View course materials & files"
+                        >
+                          <FolderDown className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Materials</span>
+                        </button>
                         <button
                           onClick={() => handleOpenRecordings(item.course)}
-                          className="bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-200 border border-indigo-500/40 px-2.5 py-1.5 rounded-xl font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                          className="bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-200 border border-indigo-500/40 px-2.5 py-1.5 rounded-xl font-semibold text-xs transition flex items-center gap-1 cursor-pointer shadow-sm"
                           title="View recorded sessions"
                         >
                           <Video className="w-3.5 h-3.5 text-indigo-400" />
@@ -826,7 +915,7 @@ export default function StudentDashboardPage() {
                         </button>
                         <button
                           onClick={() => handleOpenCoursework(item.course)}
-                          className="bg-purple-600/25 hover:bg-purple-600/40 text-purple-200 border border-purple-500/40 px-3 py-1.5 rounded-xl font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                          className="bg-purple-600/25 hover:bg-purple-600/40 text-purple-200 border border-purple-500/40 px-3 py-1.5 rounded-xl font-semibold text-xs transition flex items-center gap-1 cursor-pointer shadow-sm"
                         >
                           <FileText className="w-3.5 h-3.5 text-purple-400" />
                           Coursework
@@ -1056,6 +1145,18 @@ export default function StudentDashboardPage() {
                   >
                     <Video className="w-3.5 h-3.5" />
                     Recordings / المحاضرات ({courseRecordings.length})
+                  </button>
+
+                  <button
+                    onClick={() => setCourseModalTab('materials')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      courseModalTab === 'materials'
+                        ? 'bg-purple-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white hover:bg-[#1a203a]'
+                    }`}
+                  >
+                    <FolderDown className="w-3.5 h-3.5" />
+                    Materials / الملازم ({courseMaterials.length})
                   </button>
 
                   <button
@@ -1375,6 +1476,108 @@ export default function StudentDashboardPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Modal Body: Materials Tab */}
+            {courseModalTab === 'materials' && (
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <FolderDown className="w-4 h-4 text-amber-400" />
+                    Course Materials Library / مرفقات وملازم المادة ({courseMaterials.length})
+                  </h4>
+                  {activeCourseForAssignments && (
+                    <button
+                      onClick={() => fetchCourseMaterials(activeCourseForAssignments.id)}
+                      disabled={loadingMaterials}
+                      className="text-xs px-2.5 py-1 rounded-lg border border-[#232948] hover:bg-[#1a203a] text-slate-300 transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${loadingMaterials ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </button>
+                  )}
+                </div>
+
+                {loadingMaterials ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    <span className="text-xs">Loading course materials...</span>
+                  </div>
+                ) : courseMaterials.length === 0 ? (
+                  <div className="bg-[#0c0e1b] border border-[#202848] rounded-xl p-8 text-center text-slate-400">
+                    <FolderDown className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                    <p className="font-semibold text-slate-200 text-sm">No Materials Uploaded Yet</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Your instructor has not attached files or slides for this course yet.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {courseMaterials.map((mat) => {
+                      const backendUrl = process.env.NEXT_PUBLIC_API_URL
+                        ? process.env.NEXT_PUBLIC_API_URL.replace('/api/v1', '')
+                        : 'http://localhost:4000';
+                      const downloadHref = mat.fileUrl.startsWith('http')
+                        ? mat.fileUrl
+                        : `${backendUrl}${mat.fileUrl}`;
+
+                      return (
+                        <div
+                          key={mat.id}
+                          className="bg-[#0c0e1b] border border-[#202848] hover:border-amber-500/40 rounded-xl p-4 transition flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                  mat.fileType === 'PDF'
+                                    ? 'bg-rose-950/80 text-rose-300 border-rose-800/60'
+                                    : mat.fileType === 'ZIP'
+                                    ? 'bg-amber-950/80 text-amber-300 border-amber-800/60'
+                                    : mat.fileType === 'DOC'
+                                    ? 'bg-blue-950/80 text-blue-300 border-blue-800/60'
+                                    : 'bg-purple-950/80 text-purple-300 border-purple-800/60'
+                                }`}
+                              >
+                                {mat.fileType}
+                              </span>
+                              <span className="text-[11px] text-slate-400">
+                                {formatFileSize(mat.sizeBytes)}
+                              </span>
+                            </div>
+
+                            <h5 className="font-bold text-white text-sm line-clamp-1">
+                              {mat.title}
+                            </h5>
+                            {mat.description && (
+                              <p className="text-xs text-slate-400 mt-1 line-clamp-2">
+                                {mat.description}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-[#1a203a] flex items-center justify-between text-xs">
+                            <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {new Date(mat.createdAt).toLocaleDateString()}
+                            </span>
+                            <a
+                              href={downloadHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              download={mat.fileName}
+                              className="px-3 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/35 text-amber-300 border border-amber-500/40 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Download / تحميل</span>
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
