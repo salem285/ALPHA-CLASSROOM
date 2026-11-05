@@ -29,6 +29,9 @@ model User {
   submissions       Submission[]  @relation("StudentSubmissions")
   examAttempts      ExamAttempt[] @relation("StudentExamAttempts")
   attendanceRecords AttendanceRecord[] @relation("StudentAttendance")
+  announcements     Announcement[]     @relation("UserAnnouncements")
+  notifications     Notification[]     @relation("UserNotifications")
+  discussionPosts   DiscussionPost[]   @relation("UserDiscussionPosts")
 
   @@map("users")
 }
@@ -48,7 +51,9 @@ model Course {
   assignments  Assignment[]
   exams        Exam[]
   liveRooms    LiveRoom[]
-  recordings   Recording[]
+  recordings      Recording[]
+  announcements   Announcement[]
+  discussionPosts DiscussionPost[]
 
   @@map("courses")
 }
@@ -195,6 +200,51 @@ model Recording {
   recordedAt      DateTime  @default(now())
 
   @@map("recordings")
+}
+
+model Announcement {
+  id        String   @id @default(uuid())
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation("UserAnnouncements", fields: [authorId], references: [id], onDelete: Cascade)
+  title     String
+  content   String
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("announcements")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   // e.g. "LIVE_SESSION", "ASSIGNMENT", "EXAM", "ANNOUNCEMENT", "GRADE"
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model DiscussionPost {
+  id        String           @id @default(uuid())
+  courseId  String
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User             @relation("UserDiscussionPosts", fields: [authorId], references: [id], onDelete: Cascade)
+  content   String
+  parentId  String?
+  parent    DiscussionPost?  @relation("PostReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   DiscussionPost[] @relation("PostReplies")
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@map("discussion_posts")
 }
 
 

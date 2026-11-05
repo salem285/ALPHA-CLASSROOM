@@ -10,6 +10,9 @@ import { Assignment } from '@/types/assignment';
 import { Exam, ExamAttempt } from '@/types/exam';
 import { LiveRoom, StudentCourseAttendance } from '@/types/room';
 import { Recording } from '@/types/recording';
+import { Announcement } from '@/types/announcement';
+import { DiscussionPost } from '@/types/discussion';
+import NotificationsPopover from '@/components/notifications-popover';
 import {
   GraduationCap,
   BookOpen,
@@ -40,6 +43,10 @@ import {
   Play,
   Download,
   Film,
+  Megaphone,
+  Pin,
+  MessageSquare,
+  CornerDownRight,
 } from 'lucide-react';
 
 export default function StudentDashboardPage() {
@@ -60,7 +67,7 @@ export default function StudentDashboardPage() {
 
   // Coursework / Course Details modal states
   const [activeCourseForAssignments, setActiveCourseForAssignments] = useState<Course | null>(null);
-  const [courseModalTab, setCourseModalTab] = useState<'assignments' | 'exams' | 'recordings'>('assignments');
+  const [courseModalTab, setCourseModalTab] = useState<'assignments' | 'exams' | 'recordings' | 'announcements' | 'discussions'>('assignments');
   const [courseAssignments, setCourseAssignments] = useState<Assignment[]>([]);
   const [loadingAssignments, setLoadingAssignments] = useState<boolean>(false);
   const [courseExams, setCourseExams] = useState<Exam[]>([]);
@@ -68,6 +75,16 @@ export default function StudentDashboardPage() {
   const [courseRecordings, setCourseRecordings] = useState<Recording[]>([]);
   const [loadingRecordings, setLoadingRecordings] = useState<boolean>(false);
   const [activeRecordingForPlayback, setActiveRecordingForPlayback] = useState<Recording | null>(null);
+
+  // Announcements and Discussions states
+  const [courseAnnouncements, setCourseAnnouncements] = useState<Announcement[]>([]);
+  const [loadingAnnouncements, setLoadingAnnouncements] = useState<boolean>(false);
+  const [courseDiscussions, setCourseDiscussions] = useState<DiscussionPost[]>([]);
+  const [loadingDiscussions, setLoadingDiscussions] = useState<boolean>(false);
+  const [newQuestionContent, setNewQuestionContent] = useState<string>('');
+  const [submittingQuestion, setSubmittingQuestion] = useState<boolean>(false);
+  const [replyContentMap, setReplyContentMap] = useState<Record<string, string>>({});
+  const [submittingReplyId, setSubmittingReplyId] = useState<string | null>(null);
 
   // Submit Assignment states
   const [submittingAssignment, setSubmittingAssignment] = useState<Assignment | null>(null);
@@ -195,6 +212,77 @@ export default function StudentDashboardPage() {
     }
   };
 
+  const fetchCourseAnnouncements = async (courseId: string) => {
+    setLoadingAnnouncements(true);
+    try {
+      const data = await api.get<Announcement[]>(`/courses/${courseId}/announcements`);
+      setCourseAnnouncements(data);
+    } catch {
+      setCourseAnnouncements([]);
+    } finally {
+      setLoadingAnnouncements(false);
+    }
+  };
+
+  const fetchCourseDiscussions = async (courseId: string) => {
+    setLoadingDiscussions(true);
+    try {
+      const data = await api.get<DiscussionPost[]>(`/courses/${courseId}/discussions`);
+      setCourseDiscussions(data);
+    } catch {
+      setCourseDiscussions([]);
+    } finally {
+      setLoadingDiscussions(false);
+    }
+  };
+
+  const handleCreateQuestion = async () => {
+    if (!activeCourseForAssignments || !newQuestionContent.trim()) return;
+    setSubmittingQuestion(true);
+    try {
+      const created = await api.post<DiscussionPost>(
+        `/courses/${activeCourseForAssignments.id}/discussions`,
+        { content: newQuestionContent.trim() },
+      );
+      setCourseDiscussions((prev) => [created, ...prev]);
+      setNewQuestionContent('');
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to post question';
+      alert(msg);
+    } finally {
+      setSubmittingQuestion(false);
+    }
+  };
+
+  const handleCreateReply = async (parentId: string) => {
+    const text = replyContentMap[parentId]?.trim();
+    if (!activeCourseForAssignments || !text) return;
+    setSubmittingReplyId(parentId);
+    try {
+      const reply = await api.post<DiscussionPost>(
+        `/courses/${activeCourseForAssignments.id}/discussions`,
+        { content: text, parentId },
+      );
+      setCourseDiscussions((prev) =>
+        prev.map((post) => {
+          if (post.id === parentId) {
+            return {
+              ...post,
+              replies: [...(post.replies || []), reply],
+            };
+          }
+          return post;
+        }),
+      );
+      setReplyContentMap((prev) => ({ ...prev, [parentId]: '' }));
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to post reply';
+      alert(msg);
+    } finally {
+      setSubmittingReplyId(null);
+    }
+  };
+
   const handleOpenCoursework = async (course: Course) => {
     setActiveCourseForAssignments(course);
     setCourseModalTab('assignments');
@@ -202,6 +290,8 @@ export default function StudentDashboardPage() {
       fetchCourseAssignments(course.id),
       fetchCourseExams(course.id),
       fetchCourseRecordings(course.id),
+      fetchCourseAnnouncements(course.id),
+      fetchCourseDiscussions(course.id),
     ]);
   };
 
@@ -212,6 +302,8 @@ export default function StudentDashboardPage() {
       fetchCourseAssignments(course.id),
       fetchCourseExams(course.id),
       fetchCourseRecordings(course.id),
+      fetchCourseAnnouncements(course.id),
+      fetchCourseDiscussions(course.id),
     ]);
   };
 
@@ -438,6 +530,7 @@ export default function StudentDashboardPage() {
           </div>
 
           <div className="flex items-center gap-4">
+            <NotificationsPopover />
             <div className="text-right hidden sm:block">
               <div className="text-xs font-semibold text-slate-200">
                 {user.firstName} {user.lastName}
@@ -964,6 +1057,30 @@ export default function StudentDashboardPage() {
                     <Video className="w-3.5 h-3.5" />
                     Recordings / المحاضرات ({courseRecordings.length})
                   </button>
+
+                  <button
+                    onClick={() => setCourseModalTab('announcements')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      courseModalTab === 'announcements'
+                        ? 'bg-purple-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white hover:bg-[#1a203a]'
+                    }`}
+                  >
+                    <Megaphone className="w-3.5 h-3.5" />
+                    Announcements / الإعلانات ({courseAnnouncements.length})
+                  </button>
+
+                  <button
+                    onClick={() => setCourseModalTab('discussions')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      courseModalTab === 'discussions'
+                        ? 'bg-purple-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white hover:bg-[#1a203a]'
+                    }`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Discussions & Q&A ({courseDiscussions.length})
+                  </button>
                 </div>
               </div>
               <button
@@ -1255,6 +1372,258 @@ export default function StudentDashboardPage() {
                           >
                             <Download className="w-3.5 h-3.5" />
                           </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Modal Body: Announcements Tab */}
+            {courseModalTab === 'announcements' && (
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Megaphone className="w-4 h-4 text-purple-400" />
+                    Course Announcements / الإعلانات ({courseAnnouncements.length})
+                  </h4>
+                  {activeCourseForAssignments && (
+                    <button
+                      onClick={() => fetchCourseAnnouncements(activeCourseForAssignments.id)}
+                      disabled={loadingAnnouncements}
+                      className="text-xs px-2.5 py-1 rounded-lg border border-[#232948] hover:bg-[#1a203a] text-slate-300 transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${loadingAnnouncements ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </button>
+                  )}
+                </div>
+
+                {loadingAnnouncements ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    <span className="text-xs">Loading course announcements...</span>
+                  </div>
+                ) : courseAnnouncements.length === 0 ? (
+                  <div className="bg-[#0c0e1b] border border-[#202848] rounded-xl p-8 text-center text-slate-400">
+                    <Megaphone className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                    <p className="font-semibold text-slate-200 text-sm">No Announcements Yet</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Important course alerts and updates from your instructor will be published here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {courseAnnouncements.map((ann) => (
+                      <div
+                        key={ann.id}
+                        className={`rounded-2xl p-5 border transition ${
+                          ann.isPinned
+                            ? 'bg-gradient-to-r from-purple-950/60 via-[#14122d] to-[#0f142b] border-purple-500/50 shadow-lg shadow-purple-950/30'
+                            : 'bg-[#0f1325] border-[#21294c]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2">
+                            {ann.isPinned && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                                <Pin className="w-3 h-3 text-amber-400 rotate-45" />
+                                PINNED
+                              </span>
+                            )}
+                            <h5 className="font-bold text-white text-base leading-snug">{ann.title}</h5>
+                          </div>
+                          <span className="text-[11px] text-slate-400 shrink-0 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-slate-500" />
+                            {new Date(ann.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line mt-2">
+                          {ann.content}
+                        </p>
+
+                        <div className="mt-4 pt-3 border-t border-[#1a203a] flex items-center justify-between text-[11px] text-slate-400">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-5 h-5 rounded-full bg-purple-600/30 text-purple-300 flex items-center justify-center font-bold text-[10px]">
+                              {ann.author?.firstName?.[0] || 'I'}
+                            </span>
+                            <span>{ann.author?.firstName} {ann.author?.lastName}</span>
+                            <span className="px-1.5 py-0.2 rounded text-[10px] bg-purple-950 text-purple-300 border border-purple-800/60 font-semibold">
+                              Instructor
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Modal Body: Discussions & Q&A Tab */}
+            {courseModalTab === 'discussions' && (
+              <div className="p-6 overflow-y-auto flex-1 space-y-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-purple-400" />
+                      Course Q&A & Discussions ({courseDiscussions.length})
+                    </h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Ask questions, collaborate with peers, and receive answers from your instructor.
+                    </p>
+                  </div>
+                  {activeCourseForAssignments && (
+                    <button
+                      onClick={() => fetchCourseDiscussions(activeCourseForAssignments.id)}
+                      disabled={loadingDiscussions}
+                      className="text-xs px-2.5 py-1 rounded-lg border border-[#232948] hover:bg-[#1a203a] text-slate-300 transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${loadingDiscussions ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </button>
+                  )}
+                </div>
+
+                {/* Ask a Question Box */}
+                <div className="p-4 rounded-xl bg-[#0c0e1b] border border-[#232c52] space-y-3">
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                    Ask a Question / طرح سؤال
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Type your question or discussion topic here..."
+                    value={newQuestionContent}
+                    onChange={(e) => setNewQuestionContent(e.target.value)}
+                    className="w-full bg-[#12162b] border border-[#273059] focus:border-purple-500 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none transition"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleCreateQuestion}
+                      disabled={submittingQuestion || !newQuestionContent.trim()}
+                      className="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-1.5 px-4 rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-md shadow-purple-900/30"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{submittingQuestion ? 'Posting...' : 'Post Question'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Discussion Thread Feed */}
+                {loadingDiscussions ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    <span className="text-xs">Loading course discussions...</span>
+                  </div>
+                ) : courseDiscussions.length === 0 ? (
+                  <div className="bg-[#0c0e1b] border border-[#202848] rounded-xl p-8 text-center text-slate-400">
+                    <MessageSquare className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                    <p className="font-semibold text-slate-200 text-sm">No Questions Yet</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Be the first to ask a question or start a topic on this course discussion board.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {courseDiscussions.map((post) => (
+                      <div
+                        key={post.id}
+                        className="rounded-2xl p-5 bg-[#0f1325] border border-[#21294c] space-y-3"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-full bg-purple-600/30 text-purple-300 flex items-center justify-center font-bold text-xs">
+                              {post.author?.firstName?.[0] || 'U'}
+                            </span>
+                            <span className="font-semibold text-white text-xs">
+                              {post.author?.firstName} {post.author?.lastName}
+                            </span>
+                            <span
+                              className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                                post.author?.role === 'INSTRUCTOR'
+                                  ? 'bg-purple-950 text-purple-300 border border-purple-800/60'
+                                  : 'bg-indigo-950 text-indigo-300 border border-indigo-800/60'
+                              }`}
+                            >
+                              {post.author?.role === 'INSTRUCTOR' ? 'Instructor' : 'Student'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-500">
+                            {new Date(post.createdAt).toLocaleDateString()} &bull;{' '}
+                            {new Date(post.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-slate-200 leading-relaxed pl-8 whitespace-pre-line">
+                          {post.content}
+                        </p>
+
+                        {/* Nested Replies */}
+                        {post.replies && post.replies.length > 0 && (
+                          <div className="ml-8 space-y-2 pt-2 border-t border-[#1a203a]">
+                            {post.replies.map((reply) => (
+                              <div
+                                key={reply.id}
+                                className="p-3 rounded-xl bg-[#0a0d18] border border-[#1b2242] flex items-start gap-2.5"
+                              >
+                                <CornerDownRight className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold text-white text-[11px]">
+                                      {reply.author?.firstName} {reply.author?.lastName}
+                                    </span>
+                                    <span
+                                      className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                        reply.author?.role === 'INSTRUCTOR'
+                                          ? 'bg-purple-950 text-purple-300 border border-purple-800/60'
+                                          : 'bg-indigo-950 text-indigo-300 border border-indigo-800/60'
+                                      }`}
+                                    >
+                                      {reply.author?.role === 'INSTRUCTOR' ? 'Instructor' : 'Student'}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500">
+                                      {new Date(reply.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                                    {reply.content}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Reply Form */}
+                        <div className="ml-8 pt-2 flex items-center gap-2">
+                          <input
+                            type="text"
+                            placeholder="Write a reply..."
+                            value={replyContentMap[post.id] || ''}
+                            onChange={(e) =>
+                              setReplyContentMap((prev) => ({
+                                ...prev,
+                                [post.id]: e.target.value,
+                              }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleCreateReply(post.id);
+                              }
+                            }}
+                            className="flex-1 bg-[#0a0d18] border border-[#1f2648] focus:border-purple-500 rounded-xl py-1.5 px-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none transition"
+                          />
+                          <button
+                            onClick={() => handleCreateReply(post.id)}
+                            disabled={
+                              submittingReplyId === post.id || !replyContentMap[post.id]?.trim()
+                            }
+                            className="px-3 py-1.5 rounded-xl bg-[#1a203a] hover:bg-[#252f5c] text-purple-300 hover:text-white border border-[#293462] text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                          >
+                            Reply
+                          </button>
                         </div>
                       </div>
                     ))}

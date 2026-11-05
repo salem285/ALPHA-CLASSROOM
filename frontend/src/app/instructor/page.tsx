@@ -40,20 +40,43 @@ import {
   Trash2,
   Download,
   Film,
+  Megaphone,
+  Pin,
+  MessageSquare,
+  CornerDownRight,
+  Send,
 } from 'lucide-react';
 import { Recording } from '@/types/recording';
+import { Announcement } from '@/types/announcement';
+import { DiscussionPost } from '@/types/discussion';
+import NotificationsPopover from '@/components/notifications-popover';
 
 export default function InstructorDashboardPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'courses' | 'assignments' | 'exams' | 'attendance' | 'recordings'>('courses');
+  const [activeTab, setActiveTab] = useState<'courses' | 'assignments' | 'exams' | 'attendance' | 'recordings' | 'announcements' | 'discussions'>('courses');
   const [courses, setCourses] = useState<Course[]>([]);
   const [loadingData, setLoadingData] = useState<boolean>(true);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [formSubmitting, setFormSubmitting] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+
+  // Announcements states
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [loadingAnnouncements, setLoadingAnnouncements] = useState<boolean>(false);
+  const [isCreateAnnouncementOpen, setIsCreateAnnouncementOpen] = useState<boolean>(false);
+  const [announcementTitle, setAnnouncementTitle] = useState<string>('');
+  const [announcementContent, setAnnouncementContent] = useState<string>('');
+  const [announcementIsPinned, setAnnouncementIsPinned] = useState<boolean>(false);
+  const [submittingAnnouncement, setSubmittingAnnouncement] = useState<boolean>(false);
+
+  // Discussions states
+  const [discussions, setDiscussions] = useState<DiscussionPost[]>([]);
+  const [loadingDiscussions, setLoadingDiscussions] = useState<boolean>(false);
+  const [replyContentMap, setReplyContentMap] = useState<Record<string, string>>({});
+  const [submittingReplyId, setSubmittingReplyId] = useState<string | null>(null);
 
   // Recordings states
   const [recordings, setRecordings] = useState<Recording[]>([]);
@@ -290,6 +313,85 @@ export default function InstructorDashboardPage() {
     return `${backendBase}/api/v1/recordings/${recording.id}/stream`;
   };
 
+  const fetchAnnouncements = useCallback(async (courseId: string) => {
+    setLoadingAnnouncements(true);
+    try {
+      const data = await api.get<Announcement[]>(`/courses/${courseId}/announcements`);
+      setAnnouncements(data);
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to load announcements';
+      setFeedback({ type: 'error', text: msg });
+    } finally {
+      setLoadingAnnouncements(false);
+    }
+  }, []);
+
+  const fetchDiscussions = useCallback(async (courseId: string) => {
+    setLoadingDiscussions(true);
+    try {
+      const data = await api.get<DiscussionPost[]>(`/courses/${courseId}/discussions`);
+      setDiscussions(data);
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to load discussions';
+      setFeedback({ type: 'error', text: msg });
+    } finally {
+      setLoadingDiscussions(false);
+    }
+  }, []);
+
+  const handleCreateAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCourseId || !announcementTitle.trim() || !announcementContent.trim()) return;
+    setSubmittingAnnouncement(true);
+    try {
+      const created = await api.post<Announcement>(`/courses/${selectedCourseId}/announcements`, {
+        title: announcementTitle.trim(),
+        content: announcementContent.trim(),
+        isPinned: announcementIsPinned,
+      });
+      setAnnouncements((prev) => [created, ...prev]);
+      setAnnouncementTitle('');
+      setAnnouncementContent('');
+      setAnnouncementIsPinned(false);
+      setIsCreateAnnouncementOpen(false);
+      setFeedback({ type: 'success', text: 'Announcement published & notifications dispatched!' });
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to create announcement';
+      setFeedback({ type: 'error', text: msg });
+    } finally {
+      setSubmittingAnnouncement(false);
+    }
+  };
+
+  const handleCreateInstructorReply = async (parentId: string) => {
+    const text = replyContentMap[parentId]?.trim();
+    if (!selectedCourseId || !text) return;
+    setSubmittingReplyId(parentId);
+    try {
+      const reply = await api.post<DiscussionPost>(`/courses/${selectedCourseId}/discussions`, {
+        content: text,
+        parentId,
+      });
+      setDiscussions((prev) =>
+        prev.map((post) => {
+          if (post.id === parentId) {
+            return {
+              ...post,
+              replies: [...(post.replies || []), reply],
+            };
+          }
+          return post;
+        }),
+      );
+      setReplyContentMap((prev) => ({ ...prev, [parentId]: '' }));
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to send reply';
+      alert(msg);
+    } finally {
+      setSubmittingReplyId(null);
+    }
+  };
+
   useEffect(() => {
     if (!loading) {
       if (!user) {
@@ -312,9 +414,22 @@ export default function InstructorDashboardPage() {
         fetchAttendanceSessions(selectedCourseId);
       } else if (activeTab === 'recordings') {
         fetchRecordings(selectedCourseId);
+      } else if (activeTab === 'announcements') {
+        fetchAnnouncements(selectedCourseId);
+      } else if (activeTab === 'discussions') {
+        fetchDiscussions(selectedCourseId);
       }
     }
-  }, [selectedCourseId, activeTab, fetchAssignments, fetchExams, fetchAttendanceSessions, fetchRecordings]);
+  }, [
+    selectedCourseId,
+    activeTab,
+    fetchAssignments,
+    fetchExams,
+    fetchAttendanceSessions,
+    fetchRecordings,
+    fetchAnnouncements,
+    fetchDiscussions,
+  ]);
 
   const handleCreateCourse = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -579,6 +694,7 @@ export default function InstructorDashboardPage() {
           </div>
 
           <div className="flex items-center gap-4">
+            <NotificationsPopover />
             <div className="text-right hidden sm:block">
               <div className="text-xs font-semibold text-slate-200">
                 {user.firstName} {user.lastName}
@@ -743,6 +859,30 @@ export default function InstructorDashboardPage() {
             >
               <Video className="w-3.5 h-3.5" />
               Recordings / المحاضرات ({recordings.length})
+            </button>
+
+            <button
+              onClick={() => setActiveTab('announcements')}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'announcements'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-[#191f3a]'
+              }`}
+            >
+              <Megaphone className="w-3.5 h-3.5" />
+              Announcements ({announcements.length})
+            </button>
+
+            <button
+              onClick={() => setActiveTab('discussions')}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'discussions'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-[#191f3a]'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              Q&A Discussions ({discussions.length})
             </button>
           </div>
 
@@ -947,6 +1087,26 @@ export default function InstructorDashboardPage() {
                         >
                           <Video className="w-3 h-3" />
                           Recordings
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedCourseId(course.id);
+                            setActiveTab('announcements');
+                          }}
+                          className="text-xs px-2.5 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 font-medium transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <Megaphone className="w-3 h-3" />
+                          Announcements
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedCourseId(course.id);
+                            setActiveTab('discussions');
+                          }}
+                          className="text-xs px-2.5 py-1 rounded-lg bg-teal-600/20 hover:bg-teal-600/30 text-teal-300 border border-teal-500/30 font-medium transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <MessageSquare className="w-3 h-3" />
+                          Q&A
                         </button>
                       </div>
                     </div>
@@ -1439,6 +1599,299 @@ export default function InstructorDashboardPage() {
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                               Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 6: Course Announcements */}
+        {activeTab === 'announcements' && (
+          <div className="space-y-6">
+            {courses.length === 0 ? (
+              <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center">
+                <Megaphone className="w-12 h-12 text-purple-400/40 mx-auto mb-3" />
+                <h4 className="text-base font-bold text-white">Create a Course First</h4>
+              </div>
+            ) : (
+              <div>
+                {/* Course Selector & Create Button */}
+                <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Selected Course:
+                    </label>
+                    <select
+                      value={selectedCourseId || ''}
+                      onChange={(e) => setSelectedCourseId(e.target.value)}
+                      className="bg-[#0b0e1b] border border-[#262e52] rounded-xl px-3 py-2 text-xs font-medium text-slate-200 focus:outline-none focus:border-purple-500 transition"
+                    >
+                      {courses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} — {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={() => setIsCreateAnnouncementOpen(true)}
+                    className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 px-4 rounded-xl text-xs transition shadow-md shadow-purple-900/30 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Megaphone className="w-4 h-4" />
+                    Publish Announcement
+                  </button>
+                </div>
+
+                {/* Announcements List */}
+                <div className="mt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <Megaphone className="w-4 h-4 text-purple-400" />
+                      Course Announcements ({announcements.length})
+                    </h3>
+                    {selectedCourseId && (
+                      <button
+                        onClick={() => fetchAnnouncements(selectedCourseId)}
+                        disabled={loadingAnnouncements}
+                        className="text-xs px-2.5 py-1 rounded-lg border border-[#232948] hover:bg-[#1a203a] text-slate-300 transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${loadingAnnouncements ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </button>
+                    )}
+                  </div>
+
+                  {loadingAnnouncements ? (
+                    <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center text-slate-400">
+                      <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                      <span className="text-xs">Loading course announcements...</span>
+                    </div>
+                  ) : announcements.length === 0 ? (
+                    <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center">
+                      <Megaphone className="w-10 h-10 text-slate-600 mx-auto mb-2" />
+                      <h4 className="font-bold text-white text-sm">No Announcements Published Yet</h4>
+                      <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto mb-4">
+                        Publish reminders, schedule updates, and syllabus notices to notify all enrolled students.
+                      </p>
+                      <button
+                        onClick={() => setIsCreateAnnouncementOpen(true)}
+                        className="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-1.5 px-3.5 rounded-xl text-xs transition inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Megaphone className="w-3.5 h-3.5" />
+                        Publish First Announcement
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {announcements.map((ann) => (
+                        <div
+                          key={ann.id}
+                          className={`rounded-2xl p-5 border transition ${
+                            ann.isPinned
+                              ? 'bg-gradient-to-r from-purple-950/60 via-[#14122d] to-[#0f142b] border-purple-500/50 shadow-lg shadow-purple-950/30'
+                              : 'bg-[#12162b] border-[#21294c]'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2">
+                              {ann.isPinned && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                                  <Pin className="w-3 h-3 text-amber-400 rotate-45" />
+                                  PINNED
+                                </span>
+                              )}
+                              <h4 className="font-bold text-white text-base">{ann.title}</h4>
+                            </div>
+                            <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-slate-500" />
+                              {new Date(ann.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 whitespace-pre-line leading-relaxed mt-2">
+                            {ann.content}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 7: Q&A Discussions */}
+        {activeTab === 'discussions' && (
+          <div className="space-y-6">
+            {courses.length === 0 ? (
+              <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center">
+                <MessageSquare className="w-12 h-12 text-purple-400/40 mx-auto mb-3" />
+                <h4 className="text-base font-bold text-white">Create a Course First</h4>
+              </div>
+            ) : (
+              <div>
+                {/* Course Selector Bar */}
+                <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Selected Course:
+                    </label>
+                    <select
+                      value={selectedCourseId || ''}
+                      onChange={(e) => setSelectedCourseId(e.target.value)}
+                      className="bg-[#0b0e1b] border border-[#262e52] rounded-xl px-3 py-2 text-xs font-medium text-slate-200 focus:outline-none focus:border-purple-500 transition"
+                    >
+                      {courses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} — {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="text-xs text-slate-400 flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-purple-400" />
+                    <span>Total Question Threads: {discussions.length}</span>
+                  </div>
+                </div>
+
+                {/* Discussions List */}
+                <div className="mt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-purple-400" />
+                      Student Q&A & Discussion Threads ({discussions.length})
+                    </h3>
+                    {selectedCourseId && (
+                      <button
+                        onClick={() => fetchDiscussions(selectedCourseId)}
+                        disabled={loadingDiscussions}
+                        className="text-xs px-2.5 py-1 rounded-lg border border-[#232948] hover:bg-[#1a203a] text-slate-300 transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${loadingDiscussions ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </button>
+                    )}
+                  </div>
+
+                  {loadingDiscussions ? (
+                    <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center text-slate-400">
+                      <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                      <span className="text-xs">Loading course discussions...</span>
+                    </div>
+                  ) : discussions.length === 0 ? (
+                    <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center">
+                      <MessageSquare className="w-10 h-10 text-slate-600 mx-auto mb-2" />
+                      <h4 className="font-bold text-white text-sm">No Student Questions Yet</h4>
+                      <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                        Questions posted by enrolled students on the course discussion board will appear here for you to answer.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {discussions.map((post) => (
+                        <div
+                          key={post.id}
+                          className="rounded-2xl p-5 bg-[#12162b] border border-[#21294c] space-y-3"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="w-6 h-6 rounded-full bg-purple-600/30 text-purple-300 flex items-center justify-center font-bold text-xs">
+                                {post.author?.firstName?.[0] || 'U'}
+                              </span>
+                              <span className="font-semibold text-white text-xs">
+                                {post.author?.firstName} {post.author?.lastName}
+                              </span>
+                              <span
+                                className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                                  post.author?.role === 'INSTRUCTOR'
+                                    ? 'bg-purple-950 text-purple-300 border border-purple-800/60'
+                                    : 'bg-indigo-950 text-indigo-300 border border-indigo-800/60'
+                                }`}
+                              >
+                                {post.author?.role === 'INSTRUCTOR' ? 'Instructor' : 'Student'}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-slate-500">
+                              {new Date(post.createdAt).toLocaleDateString()} &bull;{' '}
+                              {new Date(post.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-slate-200 leading-relaxed pl-8 whitespace-pre-line">
+                            {post.content}
+                          </p>
+
+                          {/* Nested Replies */}
+                          {post.replies && post.replies.length > 0 && (
+                            <div className="ml-8 space-y-2 pt-2 border-t border-[#1a203a]">
+                              {post.replies.map((reply) => (
+                                <div
+                                  key={reply.id}
+                                  className="p-3 rounded-xl bg-[#0b0e1b] border border-[#1b2242] flex items-start gap-2.5"
+                                >
+                                  <CornerDownRight className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold text-white text-[11px]">
+                                        {reply.author?.firstName} {reply.author?.lastName}
+                                      </span>
+                                      <span
+                                        className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                                          reply.author?.role === 'INSTRUCTOR'
+                                            ? 'bg-purple-950 text-purple-300 border border-purple-800/60'
+                                            : 'bg-indigo-950 text-indigo-300 border border-indigo-800/60'
+                                        }`}
+                                      >
+                                        {reply.author?.role === 'INSTRUCTOR' ? 'Instructor' : 'Student'}
+                                      </span>
+                                      <span className="text-[10px] text-slate-500">
+                                        {new Date(reply.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                                      {reply.content}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Instructor Reply Form */}
+                          <div className="ml-8 pt-2 flex items-center gap-2">
+                            <input
+                              type="text"
+                              placeholder="Type an instructor answer or reply..."
+                              value={replyContentMap[post.id] || ''}
+                              onChange={(e) =>
+                                setReplyContentMap((prev) => ({
+                                  ...prev,
+                                  [post.id]: e.target.value,
+                                }))
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleCreateInstructorReply(post.id);
+                                }
+                              }}
+                              className="flex-1 bg-[#0b0e1b] border border-[#1f2648] focus:border-purple-500 rounded-xl py-1.5 px-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none transition"
+                            />
+                            <button
+                              onClick={() => handleCreateInstructorReply(post.id)}
+                              disabled={
+                                submittingReplyId === post.id || !replyContentMap[post.id]?.trim()
+                              }
+                              className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white border border-purple-500/40 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                            >
+                              Post Answer
                             </button>
                           </div>
                         </div>
@@ -2465,6 +2918,93 @@ export default function InstructorDashboardPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Announcement Modal */}
+      {isCreateAnnouncementOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="bg-[#12162b] border border-[#2a345e] rounded-2xl w-full max-w-lg p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-4 border-b border-[#21294c] mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                  <Megaphone className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">Publish Course Announcement</h3>
+                  <p className="text-[11px] text-slate-400">Notifies all enrolled students automatically</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCreateAnnouncementOpen(false)}
+                className="text-slate-400 hover:text-white transition p-1 rounded-lg hover:bg-[#1a203a] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateAnnouncement} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Announcement Title
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Midterm Exam Schedule Update"
+                  value={announcementTitle}
+                  onChange={(e) => setAnnouncementTitle(e.target.value)}
+                  className="w-full bg-[#0c0e1b] border border-[#252c4e] rounded-xl py-2 px-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Announcement Content / Message
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder="Write announcement details for students..."
+                  value={announcementContent}
+                  onChange={(e) => setAnnouncementContent(e.target.value)}
+                  className="w-full bg-[#0c0e1b] border border-[#252c4e] rounded-xl py-2 px-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 transition"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="pinAnnouncement"
+                  checked={announcementIsPinned}
+                  onChange={(e) => setAnnouncementIsPinned(e.target.checked)}
+                  className="w-4 h-4 text-purple-600 focus:ring-purple-500 bg-[#0c0e1b] border-[#252c4e] rounded"
+                />
+                <label htmlFor="pinAnnouncement" className="text-xs text-slate-300 cursor-pointer flex items-center gap-1">
+                  <Pin className="w-3.5 h-3.5 text-amber-400 rotate-45" />
+                  Pin to top of course announcements board
+                </label>
+              </div>
+
+              <div className="pt-4 border-t border-[#21294c] flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateAnnouncementOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingAnnouncement}
+                  className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 px-5 rounded-xl text-xs transition shadow-lg shadow-purple-900/30 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{submittingAnnouncement ? 'Publishing...' : 'Publish & Dispatch Alerts'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

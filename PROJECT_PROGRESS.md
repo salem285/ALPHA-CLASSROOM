@@ -20,7 +20,7 @@
 | **Phase 7** | Online Examination & Grading System | **Completed** | 2026-11-04 |
 | **Phase 8** | Live Classrooms System (LiveKit WebRTC) | **Completed** | 2026-11-04 |
 | **Phase 9** | Automated Classroom Attendance Tracking & Analytics | **Completed** | 2026-11-05 |
-| **Phase 10** | Real-Time Messaging & Notifications | Pending | |
+| **Phase 10** | Course Announcements, Discussion Q&A & Notifications | **Completed** | 2026-11-05 |
 | **Phase 11** | Session Recording & Lecture Archive System | **Completed** | 2026-11-05 |
 | **Phase 12** | Polish, Audit & Production Readiness | Pending | |
 
@@ -286,16 +286,49 @@
 
 ---
 
-## Phase 10: Real-Time Messaging & Notifications Outline
-- [ ] Define Prisma models for direct & classroom chat:
-  - `ChatMessage` (id, courseId, roomId?, senderId, content, createdAt, updatedAt)
-  - `Notification` (id, userId, title, message, type [SYSTEM, ASSIGNMENT, EXAM, LIVE_CLASS], isRead, createdAt)
-- [ ] Implement WebSocket / Socket.IO Gateway in NestJS (`ChatGateway` / `NotificationsGateway`)
-- [ ] Real-time in-classroom chat channel for participants during live sessions
-- [ ] Course announcements and direct student-instructor communication
-- [ ] Notification bell icon and real-time toast alerts in frontend UI
-- [ ] Unread notification counters and mark-as-read endpoints
-- [ ] Unit tests and live WebSocket end-to-end verification
+## Phase 10 Execution Checklist
+- [x] Expand Prisma schema with `Announcement`, `Notification`, and `DiscussionPost` models:
+  - `Announcement` (id, courseId -> Course onDelete Cascade, authorId -> User onDelete Cascade, title, content, isPinned Boolean @default(false), createdAt, updatedAt)
+  - `Notification` (id, userId -> User onDelete Cascade, title, message, type String, link String?, isRead Boolean @default(false), createdAt)
+  - `DiscussionPost` (id, courseId -> Course onDelete Cascade, authorId -> User onDelete Cascade, content, parentId? -> DiscussionPost onDelete Cascade, createdAt, updatedAt, self-relation for threaded replies)
+  - Cascade relations added to `User` and `Course`
+- [x] Execute migration `20261105112200_add_announcements_notifications_discussions` in PostgreSQL and regenerate Prisma client
+- [x] Backend Notifications Module (`backend/src/modules/notifications`):
+  - `NotificationsService`: `getUserNotifications`, `markAsRead`, `markAllAsRead`, `createNotification`, and `createBatchNotifications` (using `prisma.notification.createMany` for bulk dispatch)
+  - `NotificationsController`: `GET /api/v1/notifications`, `PATCH /api/v1/notifications/:id/read`, `PATCH /api/v1/notifications/read-all`
+  - Unit tests in `notifications.service.spec.ts` (6 tests passing)
+- [x] Backend Announcements Module (`backend/src/modules/announcements`):
+  - `AnnouncementsService`: `createAnnouncement` (validates instructor/admin ownership, auto-notifies all enrolled course students via batch notification), `getCourseAnnouncements` (sorted with pinned announcements first)
+  - `AnnouncementsController`: `POST /api/v1/courses/:courseId/announcements`, `GET /api/v1/courses/:courseId/announcements`
+  - Unit tests in `announcements.service.spec.ts` (6 tests passing)
+- [x] Backend Discussions Module (`backend/src/modules/discussions`):
+  - `DiscussionsService`: `createPost` (validates course enrollment or instructor/admin status, supports optional `parentId` for replies, notifies root author when replied to), `getCourseDiscussions` (returns structured hierarchical threads with nested `replies` and author details)
+  - `DiscussionsController`: `POST /api/v1/courses/:courseId/discussions`, `GET /api/v1/courses/:courseId/discussions`
+- [x] Total backend unit tests: 87 passing across 10 test suites
+- [x] Frontend Notification UI Component (`frontend/src/components/notifications-popover.tsx`):
+  - Bell icon with real-time unread badge counter and polling interval
+  - Dropdown popover with categorized icons (`ANNOUNCEMENT`, `ASSIGNMENT`, `EXAM`, `LIVE_SESSION`, `DISCUSSION`, `GRADE`)
+  - "Mark all as read" button and per-item click-to-read with navigation
+- [x] Frontend Instructor Portal (`frontend/src/app/instructor/page.tsx`):
+  - Added `NotificationsPopover` to header bar
+  - Added "Announcements / الإعلانات" and "Q&A Discussions / نقاشات" tab options and course card shortcuts
+  - Announcement modal for publishing updates with pinned priority toggle
+  - Q&A thread list with nested replies and inline instructor reply form
+- [x] Frontend Student Portal (`frontend/src/app/student/page.tsx`):
+  - Added `NotificationsPopover` to header bar
+  - Dedicated "Announcements / الإعلانات" tab in Course Details modal with pinned banner styling
+  - Dedicated "Q&A Discussions / نقاشات" tab in Course Details modal with "Ask a Question" input, nested threads, and replies
+- [x] Zero compilation errors verified for both backend (`npm run build`) and frontend (`npm run build`)
+- [x] Live automated end-to-end test (`scratch/test_phase10_announcements.ps1`):
+  1. Instructor creates course and student enrolls
+  2. Student baseline notification verified
+  3. Instructor publishes pinned announcement
+  4. Enrolled student receives automated notification with announcement title and course link
+  5. Unenrolled student verified receiving 0 notifications
+  6. Student marks notification as read (unread counter decrements accurately)
+  7. Student posts discussion question
+  8. Instructor views thread and replies with `parentId`
+  9. Student views nested thread with verified instructor author details and reply hierarchy
 
 ---
 
