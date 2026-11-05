@@ -19,9 +19,12 @@ export async function apiRequest<T = any>(
   const token = typeof window !== 'undefined' ? localStorage.getItem('alpha_token') : null;
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
   };
+
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -73,4 +76,11 @@ export const api = {
 
   delete: <T = any>(endpoint: string, options?: RequestInit) =>
     apiRequest<T>(endpoint, { ...options, method: 'DELETE' }),
+
+  upload: <T = any>(endpoint: string, formData: FormData, options?: RequestInit) =>
+    apiRequest<T>(endpoint, {
+      ...options,
+      method: 'POST',
+      body: formData,
+    }),
 };

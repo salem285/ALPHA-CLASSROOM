@@ -8,9 +8,10 @@ import { CoursesModule } from './modules/courses/courses.module.js';
 import { AssignmentsModule } from './modules/assignments/assignments.module.js';
 import { ExamsModule } from './modules/exams/exams.module.js';
 import { RoomsModule } from './modules/rooms/rooms.module.js';
+import { RecordingsModule } from './modules/recordings/recordings.module.js';
 
 @Module({
-  imports: [PrismaModule, AuthModule, UsersModule, CoursesModule, AssignmentsModule, ExamsModule, RoomsModule],
+  imports: [PrismaModule, AuthModule, UsersModule, CoursesModule, AssignmentsModule, ExamsModule, RoomsModule, RecordingsModule],
   controllers: [AppController],
   providers: [AppService],
 })

@@ -1,9 +1,22 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
 import { AppModule } from './app.module.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const uploadsDir = join(process.cwd(), 'uploads', 'recordings');
+  if (!existsSync(uploadsDir)) {
+    mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Serve static assets from uploads directory
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/uploads/',
+  });
 
   // Set global API prefix: /api/v1
   app.setGlobalPrefix('api/v1');

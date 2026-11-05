@@ -48,6 +48,7 @@ model Course {
   assignments  Assignment[]
   exams        Exam[]
   liveRooms    LiveRoom[]
+  recordings   Recording[]
 
   @@map("courses")
 }
@@ -158,6 +159,7 @@ model LiveRoom {
   createdAt         DateTime           @default(now())
   endedAt           DateTime?
   attendanceRecords AttendanceRecord[]
+  recordings        Recording[]
 
   @@map("live_rooms")
 }
@@ -177,6 +179,22 @@ model AttendanceRecord {
 
   @@unique([roomId, studentId])
   @@map("attendance_records")
+}
+
+model Recording {
+  id              String    @id @default(uuid())
+  roomId          String?
+  room            LiveRoom? @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  courseId        String
+  course          Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title           String
+  fileName        String
+  fileUrl         String
+  durationSeconds Int       @default(0)
+  sizeBytes       BigInt    @default(0)
+  recordedAt      DateTime  @default(now())
+
+  @@map("recordings")
 }
 
 

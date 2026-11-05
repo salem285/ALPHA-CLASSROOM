@@ -9,6 +9,7 @@ import { Course, Enrollment } from '@/types/course';
 import { Assignment } from '@/types/assignment';
 import { Exam, ExamAttempt } from '@/types/exam';
 import { LiveRoom, StudentCourseAttendance } from '@/types/room';
+import { Recording } from '@/types/recording';
 import {
   GraduationCap,
   BookOpen,
@@ -36,6 +37,9 @@ import {
   Radio,
   Video,
   UserCheck,
+  Play,
+  Download,
+  Film,
 } from 'lucide-react';
 
 export default function StudentDashboardPage() {
@@ -56,11 +60,14 @@ export default function StudentDashboardPage() {
 
   // Coursework / Course Details modal states
   const [activeCourseForAssignments, setActiveCourseForAssignments] = useState<Course | null>(null);
-  const [courseModalTab, setCourseModalTab] = useState<'assignments' | 'exams'>('assignments');
+  const [courseModalTab, setCourseModalTab] = useState<'assignments' | 'exams' | 'recordings'>('assignments');
   const [courseAssignments, setCourseAssignments] = useState<Assignment[]>([]);
   const [loadingAssignments, setLoadingAssignments] = useState<boolean>(false);
   const [courseExams, setCourseExams] = useState<Exam[]>([]);
   const [loadingExams, setLoadingExams] = useState<boolean>(false);
+  const [courseRecordings, setCourseRecordings] = useState<Recording[]>([]);
+  const [loadingRecordings, setLoadingRecordings] = useState<boolean>(false);
+  const [activeRecordingForPlayback, setActiveRecordingForPlayback] = useState<Recording | null>(null);
 
   // Submit Assignment states
   const [submittingAssignment, setSubmittingAssignment] = useState<Assignment | null>(null);
@@ -176,13 +183,60 @@ export default function StudentDashboardPage() {
     }
   };
 
+  const fetchCourseRecordings = async (courseId: string) => {
+    setLoadingRecordings(true);
+    try {
+      const data = await api.get<Recording[]>(`/courses/${courseId}/recordings`);
+      setCourseRecordings(data);
+    } catch {
+      setCourseRecordings([]);
+    } finally {
+      setLoadingRecordings(false);
+    }
+  };
+
   const handleOpenCoursework = async (course: Course) => {
     setActiveCourseForAssignments(course);
     setCourseModalTab('assignments');
     await Promise.all([
       fetchCourseAssignments(course.id),
       fetchCourseExams(course.id),
+      fetchCourseRecordings(course.id),
     ]);
+  };
+
+  const handleOpenRecordings = async (course: Course) => {
+    setActiveCourseForAssignments(course);
+    setCourseModalTab('recordings');
+    await Promise.all([
+      fetchCourseAssignments(course.id),
+      fetchCourseExams(course.id),
+      fetchCourseRecordings(course.id),
+    ]);
+  };
+
+  const formatRecordingDuration = (sec: number) => {
+    const hours = Math.floor(sec / 3600);
+    const mins = Math.floor((sec % 3600) / 60);
+    const secs = sec % 60;
+    if (hours > 0) {
+      return `${hours}h ${mins.toString().padStart(2, '0')}m ${secs.toString().padStart(2, '0')}s`;
+    }
+    return `${mins}m ${secs.toString().padStart(2, '0')}s`;
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (!bytes || bytes === 0) return '0 MB';
+    const mb = bytes / (1024 * 1024);
+    if (mb < 1) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${mb.toFixed(1)} MB`;
+  };
+
+  const getRecordingStreamUrl = (recording: Recording) => {
+    const backendBase = process.env.NEXT_PUBLIC_API_URL
+      ? process.env.NEXT_PUBLIC_API_URL.replace('/api/v1', '')
+      : 'http://localhost:4000';
+    return `${backendBase}/api/v1/recordings/${recording.id}/stream`;
   };
 
   // Exam Countdown Timer Effect
@@ -668,13 +722,23 @@ export default function StudentDashboardPage() {
                         <Calendar className="w-3 h-3" />
                         {new Date(item.enrolledAt).toLocaleDateString()}
                       </span>
-                      <button
-                        onClick={() => handleOpenCoursework(item.course)}
-                        className="bg-purple-600/25 hover:bg-purple-600/40 text-purple-200 border border-purple-500/40 px-3 py-1.5 rounded-xl font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-purple-400" />
-                        Assignments & Exams
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleOpenRecordings(item.course)}
+                          className="bg-indigo-600/25 hover:bg-indigo-600/40 text-indigo-200 border border-indigo-500/40 px-2.5 py-1.5 rounded-xl font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                          title="View recorded sessions"
+                        >
+                          <Video className="w-3.5 h-3.5 text-indigo-400" />
+                          Recordings
+                        </button>
+                        <button
+                          onClick={() => handleOpenCoursework(item.course)}
+                          className="bg-purple-600/25 hover:bg-purple-600/40 text-purple-200 border border-purple-500/40 px-3 py-1.5 rounded-xl font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-purple-400" />
+                          Coursework
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -888,6 +952,18 @@ export default function StudentDashboardPage() {
                     <CheckSquare className="w-3.5 h-3.5" />
                     Online Exams ({courseExams.length})
                   </button>
+
+                  <button
+                    onClick={() => setCourseModalTab('recordings')}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                      courseModalTab === 'recordings'
+                        ? 'bg-purple-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white hover:bg-[#1a203a]'
+                    }`}
+                  >
+                    <Video className="w-3.5 h-3.5" />
+                    Recordings / المحاضرات ({courseRecordings.length})
+                  </button>
                 </div>
               </div>
               <button
@@ -1090,6 +1166,98 @@ export default function StudentDashboardPage() {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Modal Body: Recordings Tab */}
+            {courseModalTab === 'recordings' && (
+              <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Video className="w-4 h-4 text-purple-400" />
+                    Lecture Recordings Archive ({courseRecordings.length})
+                  </h4>
+                  {activeCourseForAssignments && (
+                    <button
+                      onClick={() => fetchCourseRecordings(activeCourseForAssignments.id)}
+                      disabled={loadingRecordings}
+                      className="text-xs px-2.5 py-1 rounded-lg border border-[#232948] hover:bg-[#1a203a] text-slate-300 transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${loadingRecordings ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </button>
+                  )}
+                </div>
+
+                {loadingRecordings ? (
+                  <div className="py-12 text-center text-slate-400">
+                    <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    <span className="text-xs">Loading course recordings...</span>
+                  </div>
+                ) : courseRecordings.length === 0 ? (
+                  <div className="bg-[#0c0e1b] border border-[#202848] rounded-xl p-8 text-center text-slate-400">
+                    <Video className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                    <p className="font-semibold text-slate-200 text-sm">No Recorded Lectures Available</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Recorded live sessions published by your instructor will appear here for review and revision.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {courseRecordings.map((rec) => (
+                      <div
+                        key={rec.id}
+                        className="bg-[#0f1325] border border-[#21294c] hover:border-purple-500/40 rounded-xl p-4 transition flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/60 flex items-center gap-1">
+                              <Film className="w-3 h-3 text-purple-400" />
+                              Recorded Lecture
+                            </span>
+                            <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-slate-500" />
+                              {formatRecordingDuration(rec.durationSeconds)}
+                            </span>
+                          </div>
+
+                          <h5 className="font-bold text-white text-sm leading-snug">{rec.title}</h5>
+
+                          <div className="text-[11px] text-slate-400 mt-2 space-y-1">
+                            <div className="flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                              <span>{new Date(rec.recordedAt).toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-slate-500 pt-0.5">
+                              <span>Size: {formatFileSize(rec.sizeBytes)}</span>
+                              {rec.room && (
+                                <span className="truncate max-w-[140px]">Room: {rec.room.title}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 pt-3 border-t border-[#1a203a] flex items-center gap-2">
+                          <button
+                            onClick={() => setActiveRecordingForPlayback(rec)}
+                            className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold py-2 px-3 rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-purple-900/30"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span>Watch Lecture / تشغيل</span>
+                          </button>
+                          <a
+                            href={getRecordingStreamUrl(rec)}
+                            download={rec.fileName}
+                            className="p-2 rounded-xl bg-[#141a33] hover:bg-[#1d264a] text-slate-300 hover:text-white border border-[#232c52] transition flex items-center justify-center"
+                            title="Download video file"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1484,6 +1652,73 @@ export default function StudentDashboardPage() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Video Player Modal */}
+      {activeRecordingForPlayback && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="bg-[#12162b] border border-[#2a345e] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 px-6 border-b border-[#21294c] flex items-center justify-between bg-[#0e1224]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                  <Video className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base leading-tight">
+                    {activeRecordingForPlayback.title}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Recorded {new Date(activeRecordingForPlayback.recordedAt).toLocaleString()} &bull;{' '}
+                    {formatRecordingDuration(activeRecordingForPlayback.durationSeconds)} &bull;{' '}
+                    {formatFileSize(activeRecordingForPlayback.sizeBytes)}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveRecordingForPlayback(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#1a203a] transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-black flex items-center justify-center">
+              <video
+                controls
+                autoPlay
+                className="w-full max-h-[60vh] rounded-lg shadow-lg"
+                src={getRecordingStreamUrl(activeRecordingForPlayback)}
+              >
+                Your browser does not support video playback.
+              </video>
+            </div>
+
+            <div className="p-4 px-6 border-t border-[#21294c] bg-[#0e1224] flex items-center justify-between">
+              <div className="text-xs text-slate-400 flex items-center gap-3">
+                <span>
+                  Lecture Archive: <code className="text-purple-300 font-mono">{activeRecordingForPlayback.fileName}</code>
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <a
+                  href={getRecordingStreamUrl(activeRecordingForPlayback)}
+                  download={activeRecordingForPlayback.fileName}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-[#1a203a] hover:bg-[#252f5c] text-slate-200 border border-[#2b3664] transition flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setActiveRecordingForPlayback(null)}
+                  className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

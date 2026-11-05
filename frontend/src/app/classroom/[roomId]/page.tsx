@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, use } from 'react';
+import React, { useEffect, useState, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/auth-context';
@@ -21,6 +21,10 @@ import {
   BookOpen,
   Shield,
   GraduationCap,
+  CircleDot,
+  Square,
+  UploadCloud,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface PageProps {
@@ -41,6 +45,149 @@ export default function ClassroomPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [endingSession, setEndingSession] = useState(false);
+
+  // Recording State & Refs
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [uploadingRecording, setUploadingRecording] = useState(false);
+  const [recordingToast, setRecordingToast] = useState<{ type: 'success' | 'info' | 'error'; message: string } | null>(null);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const durationRef = useRef<number>(0);
+
+  const showToast = (message: string, type: 'success' | 'info' | 'error' = 'info') => {
+    setRecordingToast({ message, type });
+    setTimeout(() => {
+      setRecordingToast(null);
+    }, 5000);
+  };
+
+  const formatDuration = (sec: number) => {
+    const mins = Math.floor(sec / 60);
+    const remainingSecs = sec % 60;
+    return `${mins.toString().padStart(2, '0')}:${remainingSecs.toString().padStart(2, '0')}`;
+  };
+
+  const uploadRecordingData = async (blob: Blob, durationSec: number) => {
+    if (!roomId || !roomData) return;
+    setUploadingRecording(true);
+    showToast('Uploading & archiving lecture recording...', 'info');
+    try {
+      const formData = new FormData();
+      const filename = `recording-${roomId}-${Date.now()}.webm`;
+      formData.append('file', blob, filename);
+      formData.append('title', `${roomData.room.title} (Recorded ${new Date().toLocaleDateString()})`);
+      formData.append('durationSeconds', durationSec.toString());
+
+      await api.upload(`/rooms/${roomId}/recordings`, formData);
+      showToast('Session recording archived to course library successfully!', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to upload session recording', 'error');
+    } finally {
+      setUploadingRecording(false);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      let stream: MediaStream;
+      if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
+        });
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+      }
+
+      const options = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+        ? { mimeType: 'video/webm;codecs=vp9,opus' }
+        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+        ? { mimeType: 'video/webm;codecs=vp8,opus' }
+        : { mimeType: 'video/webm' };
+
+      const recorder = new MediaRecorder(stream, options);
+      recordedChunksRef.current = [];
+      durationRef.current = 0;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const finalChunks = recordedChunksRef.current;
+        const totalDuration = durationRef.current;
+        if (finalChunks.length > 0) {
+          const blob = new Blob(finalChunks, { type: 'video/webm' });
+          if (blob.size > 0) {
+            await uploadRecordingData(blob, totalDuration);
+          }
+        }
+      };
+
+      stream.getVideoTracks().forEach((track) => {
+        track.onended = () => {
+          stopRecording();
+        };
+      });
+
+      recorder.start(1000);
+      mediaRecorderRef.current = recorder;
+      streamRef.current = stream;
+      setIsRecording(true);
+      setRecordingTime(0);
+
+      timerRef.current = setInterval(() => {
+        setRecordingTime((prev) => {
+          const next = prev + 1;
+          durationRef.current = next;
+          return next;
+        });
+      }, 1000);
+
+      showToast('Recording started. Screen and audio are being captured.', 'info');
+    } catch (err: any) {
+      if (err.name !== 'NotAllowedError') {
+        showToast('Could not start screen recording: ' + err.message, 'error');
+      }
+    }
+  };
+
+  const stopRecording = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setIsRecording(false);
+  };
+
+  // Clean up recording on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -93,6 +240,9 @@ export default function ClassroomPage({ params }: PageProps) {
   const handleEndSession = async () => {
     if (!confirm('Are you sure you want to end this live session for all participants?')) {
       return;
+    }
+    if (isRecording) {
+      stopRecording();
     }
     setEndingSession(true);
     try {
@@ -190,6 +340,13 @@ export default function ClassroomPage({ params }: PageProps) {
               <span>LIVE</span>
             </div>
 
+            {isRecording && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-950/90 border border-rose-500/70 text-rose-300 text-xs font-bold animate-pulse shadow-md shadow-rose-950/50">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                <span>REC {formatDuration(recordingTime)}</span>
+              </div>
+            )}
+
             <div>
               <div className="text-xs font-bold text-white flex items-center gap-1.5">
                 {room.course?.code && (
@@ -223,15 +380,39 @@ export default function ClassroomPage({ params }: PageProps) {
           </div>
 
           {isInstructorOrAdmin && (
-            <button
-              onClick={handleEndSession}
-              disabled={endingSession}
-              className="bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="End the live session for all students"
-            >
-              <PhoneOff className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">{endingSession ? 'Ending...' : 'End Live Session'}</span>
-            </button>
+            <>
+              {isRecording ? (
+                <button
+                  onClick={stopRecording}
+                  disabled={uploadingRecording}
+                  className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer shadow-lg shadow-rose-900/40"
+                  title="Stop recording and upload lecture"
+                >
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                  <span>Stop REC</span>
+                </button>
+              ) : (
+                <button
+                  onClick={startRecording}
+                  disabled={uploadingRecording}
+                  className="bg-purple-600/30 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/40 font-bold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  title="Record screen and audio of this live lecture"
+                >
+                  <CircleDot className="w-3.5 h-3.5 text-rose-400" />
+                  <span className="hidden sm:inline">Record</span>
+                </button>
+              )}
+
+              <button
+                onClick={handleEndSession}
+                disabled={endingSession}
+                className="bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title="End the live session for all students"
+              >
+                <PhoneOff className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{endingSession ? 'Ending...' : 'End Live Session'}</span>
+              </button>
+            </>
           )}
 
           <button
@@ -243,6 +424,30 @@ export default function ClassroomPage({ params }: PageProps) {
           </button>
         </div>
       </header>
+
+      {/* Recording Notification Toast */}
+      {recordingToast && (
+        <div className="fixed top-20 right-6 z-50 animate-in fade-in slide-in-from-top-4 duration-200 pointer-events-none">
+          <div
+            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-semibold shadow-2xl border backdrop-blur-md ${
+              recordingToast.type === 'success'
+                ? 'bg-emerald-950/95 text-emerald-200 border-emerald-700/80 shadow-emerald-950/50'
+                : recordingToast.type === 'error'
+                ? 'bg-rose-950/95 text-rose-200 border-rose-700/80 shadow-rose-950/50'
+                : 'bg-indigo-950/95 text-indigo-200 border-indigo-700/80 shadow-indigo-950/50'
+            }`}
+          >
+            {uploadingRecording ? (
+              <UploadCloud className="w-4 h-4 text-purple-400 animate-bounce" />
+            ) : recordingToast.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <CircleDot className="w-4 h-4 text-indigo-400" />
+            )}
+            <span>{recordingToast.message}</span>
+          </div>
+        </div>
+      )}
 
       {/* LiveKit Video Conference Container */}
       <main className="flex-1 w-full bg-[#090b14] relative overflow-hidden">

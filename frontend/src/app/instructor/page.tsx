@@ -36,19 +36,30 @@ import {
   PhoneOff,
   UserCheck,
   Timer,
+  Play,
+  Trash2,
+  Download,
+  Film,
 } from 'lucide-react';
+import { Recording } from '@/types/recording';
 
 export default function InstructorDashboardPage() {
   const router = useRouter();
   const { user, loading, logout } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'courses' | 'assignments' | 'exams' | 'attendance'>('courses');
+  const [activeTab, setActiveTab] = useState<'courses' | 'assignments' | 'exams' | 'attendance' | 'recordings'>('courses');
   const [courses, setCourses] = useState<Course[]>([]);
   const [loadingData, setLoadingData] = useState<boolean>(true);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [formSubmitting, setFormSubmitting] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+
+  // Recordings states
+  const [recordings, setRecordings] = useState<Recording[]>([]);
+  const [loadingRecordings, setLoadingRecordings] = useState<boolean>(false);
+  const [activeRecordingForPlayback, setActiveRecordingForPlayback] = useState<Recording | null>(null);
+  const [deletingRecordingId, setDeletingRecordingId] = useState<string | null>(null);
 
   // Course Form states
   const [title, setTitle] = useState('');
@@ -224,6 +235,61 @@ export default function InstructorDashboardPage() {
     }
   };
 
+  const fetchRecordings = useCallback(async (courseId: string) => {
+    setLoadingRecordings(true);
+    try {
+      const data = await api.get<Recording[]>(`/courses/${courseId}/recordings`);
+      setRecordings(data);
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to load recordings';
+      setFeedback({ type: 'error', text: msg });
+    } finally {
+      setLoadingRecordings(false);
+    }
+  }, []);
+
+  const handleDeleteRecording = async (recordingId: string) => {
+    if (!confirm('Are you sure you want to delete this lecture recording?')) return;
+    setDeletingRecordingId(recordingId);
+    try {
+      await api.delete(`/recordings/${recordingId}`);
+      setRecordings((prev) => prev.filter((r) => r.id !== recordingId));
+      setFeedback({ type: 'success', text: 'Recording deleted successfully.' });
+      if (activeRecordingForPlayback?.id === recordingId) {
+        setActiveRecordingForPlayback(null);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Failed to delete recording';
+      setFeedback({ type: 'error', text: msg });
+    } finally {
+      setDeletingRecordingId(null);
+    }
+  };
+
+  const formatRecordingDuration = (sec: number) => {
+    const hours = Math.floor(sec / 3600);
+    const mins = Math.floor((sec % 3600) / 60);
+    const secs = sec % 60;
+    if (hours > 0) {
+      return `${hours}h ${mins.toString().padStart(2, '0')}m ${secs.toString().padStart(2, '0')}s`;
+    }
+    return `${mins}m ${secs.toString().padStart(2, '0')}s`;
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (!bytes || bytes === 0) return '0 MB';
+    const mb = bytes / (1024 * 1024);
+    if (mb < 1) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${mb.toFixed(1)} MB`;
+  };
+
+  const getRecordingStreamUrl = (recording: Recording) => {
+    const backendBase = process.env.NEXT_PUBLIC_API_URL
+      ? process.env.NEXT_PUBLIC_API_URL.replace('/api/v1', '')
+      : 'http://localhost:4000';
+    return `${backendBase}/api/v1/recordings/${recording.id}/stream`;
+  };
+
   useEffect(() => {
     if (!loading) {
       if (!user) {
@@ -244,9 +310,11 @@ export default function InstructorDashboardPage() {
         fetchExams(selectedCourseId);
       } else if (activeTab === 'attendance') {
         fetchAttendanceSessions(selectedCourseId);
+      } else if (activeTab === 'recordings') {
+        fetchRecordings(selectedCourseId);
       }
     }
-  }, [selectedCourseId, activeTab, fetchAssignments, fetchExams, fetchAttendanceSessions]);
+  }, [selectedCourseId, activeTab, fetchAssignments, fetchExams, fetchAttendanceSessions, fetchRecordings]);
 
   const handleCreateCourse = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -664,6 +732,18 @@ export default function InstructorDashboardPage() {
               <UserCheck className="w-3.5 h-3.5" />
               Attendance Reports
             </button>
+
+            <button
+              onClick={() => setActiveTab('recordings')}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'recordings'
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-900/30'
+                  : 'text-slate-400 hover:text-white hover:bg-[#191f3a]'
+              }`}
+            >
+              <Video className="w-3.5 h-3.5" />
+              Recordings / المحاضرات ({recordings.length})
+            </button>
           </div>
 
           <button
@@ -857,6 +937,16 @@ export default function InstructorDashboardPage() {
                         >
                           <UserCheck className="w-3 h-3" />
                           Attendance
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedCourseId(course.id);
+                            setActiveTab('recordings');
+                          }}
+                          className="text-xs px-2.5 py-1 rounded-lg bg-pink-600/20 hover:bg-pink-600/30 text-pink-300 border border-pink-500/30 font-medium transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <Video className="w-3 h-3" />
+                          Recordings
                         </button>
                       </div>
                     </div>
@@ -1221,6 +1311,134 @@ export default function InstructorDashboardPage() {
                             >
                               <UserCheck className="w-3.5 h-3.5" />
                               View Attendees List ({session._count?.attendanceRecords || session.attendanceRecords?.length || 0})
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 5: Session Recordings & Lecture Archive */}
+        {activeTab === 'recordings' && (
+          <div className="space-y-6">
+            {courses.length === 0 ? (
+              <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center">
+                <Video className="w-12 h-12 text-purple-400/40 mx-auto mb-3" />
+                <h4 className="text-base font-bold text-white">Create a Course First</h4>
+              </div>
+            ) : (
+              <div>
+                {/* Course Selector Bar */}
+                <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Selected Course:
+                    </label>
+                    <select
+                      value={selectedCourseId || ''}
+                      onChange={(e) => setSelectedCourseId(e.target.value)}
+                      className="bg-[#0b0e1b] border border-[#262e52] rounded-xl px-3 py-2 text-xs font-medium text-slate-200 focus:outline-none focus:border-purple-500 transition"
+                    >
+                      {courses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} — {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="text-xs text-slate-400 flex items-center gap-2">
+                    <Film className="w-4 h-4 text-purple-400" />
+                    <span>Archived Lectures: {recordings.length}</span>
+                  </div>
+                </div>
+
+                {/* Recordings List */}
+                <div className="mt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <Video className="w-4 h-4 text-purple-400" />
+                      Recorded Sessions / المحاضرات المسجلة ({recordings.length})
+                    </h3>
+                    {selectedCourseId && (
+                      <button
+                        onClick={() => fetchRecordings(selectedCourseId)}
+                        disabled={loadingRecordings}
+                        className="text-xs px-2.5 py-1 rounded-lg border border-[#232948] hover:bg-[#1a203a] text-slate-300 transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${loadingRecordings ? 'animate-spin' : ''}`} />
+                        Refresh
+                      </button>
+                    )}
+                  </div>
+
+                  {loadingRecordings ? (
+                    <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center text-slate-400">
+                      <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                      <span className="text-xs">Loading course recordings...</span>
+                    </div>
+                  ) : recordings.length === 0 ? (
+                    <div className="bg-[#12162b] border border-[#21294c] rounded-2xl p-12 text-center">
+                      <Video className="w-10 h-10 text-slate-600 mx-auto mb-2" />
+                      <h4 className="font-bold text-white text-sm">No Lecture Recordings Yet</h4>
+                      <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                        Start a live classroom session and click the &quot;Record&quot; button to capture and archive lectures for your students.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                      {recordings.map((rec) => (
+                        <div
+                          key={rec.id}
+                          className="bg-[#12162b] border border-[#21294c] hover:border-purple-500/40 rounded-2xl p-5 shadow-lg transition flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-2.5">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/60 flex items-center gap-1">
+                                <Film className="w-3 h-3 text-purple-400" />
+                                Archived Lecture
+                              </span>
+                              <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-slate-500" />
+                                {formatRecordingDuration(rec.durationSeconds)}
+                              </span>
+                            </div>
+
+                            <h4 className="font-bold text-white text-base leading-snug">{rec.title}</h4>
+                            <div className="text-xs text-slate-400 mt-2 space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                                <span>{new Date(rec.recordedAt).toLocaleString()}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                                <span>Size: {formatFileSize(rec.sizeBytes)}</span>
+                                {rec.room && (
+                                  <span className="truncate max-w-[150px]">Room: {rec.room.title}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 pt-3 border-t border-[#1c223c] grid grid-cols-2 gap-2">
+                            <button
+                              onClick={() => setActiveRecordingForPlayback(rec)}
+                              className="bg-purple-600 hover:bg-purple-500 text-white font-semibold py-2 px-3 rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-purple-900/30"
+                            >
+                              <Play className="w-3.5 h-3.5 fill-current" />
+                              Watch / تشغيل
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRecording(rec.id)}
+                              disabled={deletingRecordingId === rec.id}
+                              className="bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 border border-rose-800/50 font-semibold py-2 px-3 rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Delete
                             </button>
                           </div>
                         </div>
@@ -2179,6 +2397,73 @@ export default function InstructorDashboardPage() {
               >
                 Close Report
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Video Player Modal */}
+      {activeRecordingForPlayback && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="bg-[#12162b] border border-[#2a345e] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 px-6 border-b border-[#21294c] flex items-center justify-between bg-[#0e1224]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                  <Video className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base leading-tight">
+                    {activeRecordingForPlayback.title}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Recorded {new Date(activeRecordingForPlayback.recordedAt).toLocaleString()} &bull;{' '}
+                    {formatRecordingDuration(activeRecordingForPlayback.durationSeconds)} &bull;{' '}
+                    {formatFileSize(activeRecordingForPlayback.sizeBytes)}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveRecordingForPlayback(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#1a203a] transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-black flex items-center justify-center">
+              <video
+                controls
+                autoPlay
+                className="w-full max-h-[60vh] rounded-lg shadow-lg"
+                src={getRecordingStreamUrl(activeRecordingForPlayback)}
+              >
+                Your browser does not support video playback.
+              </video>
+            </div>
+
+            <div className="p-4 px-6 border-t border-[#21294c] bg-[#0e1224] flex items-center justify-between">
+              <div className="text-xs text-slate-400 flex items-center gap-3">
+                <span>
+                  File: <code className="text-purple-300 font-mono">{activeRecordingForPlayback.fileName}</code>
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <a
+                  href={getRecordingStreamUrl(activeRecordingForPlayback)}
+                  download={activeRecordingForPlayback.fileName}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-[#1a203a] hover:bg-[#252f5c] text-slate-200 border border-[#2b3664] transition flex items-center gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setActiveRecordingForPlayback(null)}
+                  className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

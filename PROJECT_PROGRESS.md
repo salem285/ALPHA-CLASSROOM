@@ -21,7 +21,7 @@
 | **Phase 8** | Live Classrooms System (LiveKit WebRTC) | **Completed** | 2026-11-04 |
 | **Phase 9** | Automated Classroom Attendance Tracking & Analytics | **Completed** | 2026-11-05 |
 | **Phase 10** | Real-Time Messaging & Notifications | Pending | |
-| **Phase 11** | Cloud Storage & Meeting Recordings (Google Drive) | Pending | |
+| **Phase 11** | Session Recording & Lecture Archive System | **Completed** | 2026-11-05 |
 | **Phase 12** | Polish, Audit & Production Readiness | Pending | |
 
 ---
@@ -296,3 +296,40 @@
 - [ ] Notification bell icon and real-time toast alerts in frontend UI
 - [ ] Unread notification counters and mark-as-read endpoints
 - [ ] Unit tests and live WebSocket end-to-end verification
+
+---
+
+## Phase 11 Execution Checklist
+- [x] Expand Prisma schema with `Recording` model:
+  - `Recording` (id, roomId? -> LiveRoom onDelete SetNull, courseId -> Course onDelete Cascade, title, fileName, fileUrl, durationSeconds, sizeBytes BigInt, recordedAt)
+  - Relations added to `Course` and `LiveRoom`
+- [x] Execute migration `20261105104953_add_recordings` in PostgreSQL and regenerate Prisma client
+- [x] Backend Recordings Module (`backend/src/modules/recordings`):
+  - Configured static file serving for `uploads/recordings` via NestExpressApplication and disk storage
+  - Configured Multer interceptor with video MIME type filters (webm, mp4, mkv, mov) and 1GB file size limit
+  - `POST /api/v1/rooms/:roomId/recordings` (INSTRUCTOR owner, ADMIN): saves file to disk, auto-serializes BigInt `sizeBytes`, creates recording record
+  - `GET /api/v1/courses/:courseId/recordings` (Enrolled students, Instructor, Admin): retrieves all recordings with room details
+  - `DELETE /api/v1/recordings/:id` (INSTRUCTOR owner, ADMIN): securely unlinks file from disk and deletes DB record
+  - `GET /api/v1/recordings/:id/stream` & `/api/v1/recordings/file/:fileName`: HTTP 206 Partial Content range request streaming for HTML5 video seeking
+- [x] Comprehensive unit tests in `recordings.service.spec.ts` (12 unit tests passing, total backend tests: 75 passed across 8 test suites)
+- [x] Frontend Classroom Integration (`frontend/src/app/classroom/[roomId]/page.tsx`):
+  - Instructor "Record / Stop REC" control toggle in conference header
+  - Client-side MediaRecorder capture of screen and audio with 1s chunk slicing
+  - Pulsing "● REC mm:ss" indicator visible while recording is active
+  - Automatic compilation of WebM chunks and background upload with progress toast upon stopping or session end
+- [x] Frontend Instructor Portal (`frontend/src/app/instructor/page.tsx`):
+  - "Recordings / المحاضرات المسجلة" tab with course selector and lecture archive cards
+  - "Recordings" shortcut button on course cards in Courses tab
+  - Built-in video player modal for playback with HTTP range streaming, download button, and delete action
+- [x] Frontend Student Portal (`frontend/src/app/student/page.tsx`):
+  - "Recordings / المحاضرات" quick button on enrolled course cards
+  - Dedicated "Recordings / المحاضرات المسجلة" tab inside Course Details modal
+  - Built-in video player modal for instant lecture playback and download
+- [x] Zero compilation errors verified for both backend (`npm run build`) and frontend (`npm run build`)
+- [x] Live automated end-to-end test (`scratch/test_phase11_recordings.ps1`):
+  1. Instructor creates course and starts live room
+  2. Student enrolls in course
+  3. Instructor uploads video recording payload via multipart/form-data
+  4. Student retrieves course recordings list
+  5. Verified HTTP 206 Partial Content range request streaming
+  6. Instructor deletes recording (file unlinked and removed from database)
