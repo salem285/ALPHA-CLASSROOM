@@ -356,13 +356,11 @@ export default function InstructorDashboardPage() {
     setSubmittingMaterial(true);
     try {
       const formData = new FormData();
-      formData.append('file', materialFile);
       formData.append('title', materialTitle.trim());
-      if (materialDescription.trim()) {
-        formData.append('description', materialDescription.trim());
-      }
+      formData.append('description', materialDescription?.trim() || '');
+      formData.append('file', materialFile);
 
-      const created = await api.post<CourseMaterial>(
+      const created = await api.upload<CourseMaterial>(
         `/courses/${selectedCourseId}/materials`,
         formData,
       );

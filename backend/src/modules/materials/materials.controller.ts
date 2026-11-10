@@ -72,6 +72,9 @@ export class MaterialsController {
     @CurrentUser('id') userId: string,
     @CurrentUser('role') userRole: UserRole,
   ) {
+    if (!file) {
+      throw new BadRequestException('A course material file is required');
+    }
     return this.materialsService.create(courseId, file, dto, userId, userRole);
   }
 
