@@ -205,6 +205,8 @@ model Recording {
   durationSeconds Int       @default(0)
   sizeBytes       BigInt    @default(0)
   recordedAt      DateTime  @default(now())
+  driveFileId     String?
+  previewUrl      String?
 
   @@map("recordings")
 }
@@ -265,6 +267,7 @@ model CourseMaterial {
   fileType    String   // "PDF", "ZIP", "DOC", "OTHER"
   sizeBytes   BigInt   @default(0)
   createdAt   DateTime @default(now())
+  driveFileId String?
 
   @@map("course_materials")
 }

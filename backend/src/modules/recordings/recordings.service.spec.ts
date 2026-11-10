@@ -6,6 +6,7 @@ import { NotFoundException, ForbiddenException, BadRequestException } from '@nes
 describe('RecordingsService', () => {
   let service: RecordingsService;
   let mockPrisma: any;
+  let mockGoogleDrive: any;
 
   beforeEach(() => {
     mockPrisma = {
@@ -26,7 +27,13 @@ describe('RecordingsService', () => {
       },
     };
 
-    service = new RecordingsService(mockPrisma as any);
+    mockGoogleDrive = {
+      isConfigured: vi.fn().mockReturnValue(false),
+      uploadFile: vi.fn(),
+      deleteFile: vi.fn(),
+    };
+
+    service = new RecordingsService(mockPrisma as any, mockGoogleDrive as any);
   });
 
   describe('create', () => {
@@ -96,6 +103,57 @@ describe('RecordingsService', () => {
       expect(result.sizeBytes).toBe(1048576);
       expect(typeof result.sizeBytes).toBe('number');
       expect(mockPrisma.recording.create).toHaveBeenCalled();
+    });
+
+    it('should upload to Google Drive when configured', async () => {
+      mockGoogleDrive.isConfigured.mockReturnValue(true);
+      mockGoogleDrive.uploadFile.mockResolvedValue({
+        fileId: 'drive-file-123',
+        webViewLink: 'https://drive.google.com/file/d/drive-file-123/view',
+        webContentLink: 'https://drive.google.com/uc?id=drive-file-123',
+        previewUrl: 'https://drive.google.com/file/d/drive-file-123/preview',
+        sizeBytes: 2048000,
+      });
+
+      mockPrisma.liveRoom.findUnique.mockResolvedValue({
+        id: 'room-1',
+        courseId: 'course-1',
+        title: 'Session 1',
+        course: { id: 'course-1', instructorId: 'inst-1' },
+      });
+
+      mockPrisma.recording.create.mockResolvedValue({
+        id: 'rec-drive-1',
+        roomId: 'room-1',
+        courseId: 'course-1',
+        title: 'Cloud Lecture',
+        fileName: 'rec-test.webm',
+        fileUrl: 'https://drive.google.com/file/d/drive-file-123/view',
+        durationSeconds: 120,
+        sizeBytes: BigInt(2048000),
+        driveFileId: 'drive-file-123',
+        previewUrl: 'https://drive.google.com/file/d/drive-file-123/preview',
+        recordedAt: new Date(),
+      });
+
+      const result = await service.create(
+        'room-1',
+        mockFile,
+        { title: 'Cloud Lecture', durationSeconds: 120 },
+        'inst-1',
+        UserRole.INSTRUCTOR,
+      );
+
+      expect(mockGoogleDrive.uploadFile).toHaveBeenCalledWith(mockFile, 'Recordings');
+      expect(result.driveFileId).toBe('drive-file-123');
+      expect(mockPrisma.recording.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            driveFileId: 'drive-file-123',
+            previewUrl: 'https://drive.google.com/file/d/drive-file-123/preview',
+          }),
+        }),
+      );
     });
   });
 
@@ -187,6 +245,23 @@ describe('RecordingsService', () => {
       const result = await service.delete('rec-1', 'inst-1', UserRole.INSTRUCTOR);
       expect(result.id).toBe('rec-1');
       expect(mockPrisma.recording.delete).toHaveBeenCalledWith({ where: { id: 'rec-1' } });
+    });
+
+    it('should delete from Google Drive when driveFileId exists and drive is configured', async () => {
+      mockGoogleDrive.isConfigured.mockReturnValue(true);
+      mockGoogleDrive.deleteFile.mockResolvedValue(true);
+
+      mockPrisma.recording.findUnique.mockResolvedValue({
+        id: 'rec-drive-1',
+        fileName: 'rec-1.webm',
+        driveFileId: 'drive-file-999',
+        course: { id: 'c-1', instructorId: 'inst-1' },
+      });
+      mockPrisma.recording.delete.mockResolvedValue({ id: 'rec-drive-1' });
+
+      const result = await service.delete('rec-drive-1', 'inst-1', UserRole.INSTRUCTOR);
+      expect(mockGoogleDrive.deleteFile).toHaveBeenCalledWith('drive-file-999');
+      expect(result.id).toBe('rec-drive-1');
     });
   });
 });

@@ -26,6 +26,7 @@
 | **Phase 13** | Course Materials Library, Student Progress & CSV Export | **Completed** | 2026-11-05 |
 | **Phase 14** | Email SMTP Service, Password Reset & Profile Management | **Completed** | 2026-11-05 |
 | **Phase 15** | Verifiable PDF Certificates with QR & Anti-Piracy Watermarking | **Completed** | 2026-11-05 |
+| **Phase 16** | Google Drive 5TB Storage Integration (Cloud Media & Assets) | **Completed** | 2026-11-10 |
 
 ---
 
@@ -564,3 +565,52 @@
     7. Public verification endpoint validates certificate code and returns student/course details
     8. Download endpoint streams PDF file (verified valid PDF header and > 3.7KB payload)
     9. Non-existent certificate code verified rejected with 404 Not Found
+
+---
+
+## Phase 16 Execution Checklist
+- [x] Database Schema Expansion (`backend/prisma/schema.prisma`):
+  - Updated `Recording` model with `driveFileId String?` and `previewUrl String?`
+  - Updated `CourseMaterial` model with `driveFileId String?`
+  - Applied database migration `20261110124202_add_google_drive_storage` and regenerated Prisma Client
+- [x] Dependencies & Environment Configuration:
+  - Installed `googleapis` in `backend/`
+  - Configured OAuth 2.0 Google Drive environment templates in `backend/.env.example` and `backend/.env`:
+    * `GOOGLE_DRIVE_CLIENT_ID`
+    * `GOOGLE_DRIVE_CLIENT_SECRET`
+    * `GOOGLE_DRIVE_REFRESH_TOKEN`
+    * `GOOGLE_DRIVE_FOLDER_ID`
+- [x] Google Drive Storage Service (`backend/src/modules/storage/`):
+  - Created `GoogleDriveService` with `google.auth.OAuth2` client authentication
+  - Implemented `isConfigured(): boolean` for seamless environment checking
+  - Implemented `uploadFile(file: Express.Multer.File, subfolderName?: string)`:
+    * Streams upload directly to target root or auto-provisioned subfolders (`Recordings`, `Materials`)
+    * Sets public reader permissions (`role: 'reader'`, `type: 'anyone'`)
+    * Returns `{ fileId, webViewLink, webContentLink, previewUrl, sizeBytes }`
+    * Automatically unlinks and cleans up temporary local Multer disk file
+  - Implemented `deleteFile(fileId: string)` deleting files from Google Drive
+  - Graceful fallback: when Google Drive credentials are unset or offline, seamlessly falls back to local disk storage without server interruption
+  - Created `StorageModule` exporting `GoogleDriveService` and imported into `AppModule`, `RecordingsModule`, and `MaterialsModule`
+- [x] Module Integrations:
+  - `RecordingsService`:
+    * When configured, stores lecture videos directly to Google Drive `Recordings` folder
+    * Persists `driveFileId`, `previewUrl`, and cloud `fileUrl`
+    * Unlinks local temporary recording file from VPS disk
+    * Deletes file from Google Drive when instructor/admin removes recording
+    * Video streaming endpoint redirects directly to Drive preview URL when hosted on cloud
+  - `MaterialsService`:
+    * When configured, stores PDF slides and documents directly to Google Drive `Materials` folder
+    * Persists `driveFileId` and cloud direct download link
+    * Unlinks local temporary material file from VPS disk
+    * Deletes file from Google Drive when material is deleted
+- [x] Frontend Video Player & Asset Integration:
+  - Updated TypeScript interfaces (`Recording` and `CourseMaterial`) in `frontend/src/types/`
+  - In `frontend/src/app/student/page.tsx` & `frontend/src/app/instructor/page.tsx`:
+    * Recording cards display `Drive Cloud 5TB` badge when hosted on Google Drive
+    * Recording playback modal embeds Google Drive video player iframe (`previewUrl`) with fallback to HTML5 `<video>`
+    * Embedded dynamic anti-piracy watermark overlay (`<VideoWatermark />`) renders on top of the Google Drive iframe player
+    * Direct download links properly adapt between cloud URLs and local streaming endpoints
+- [x] Verification & Integrity Checks:
+  - 130 of 130 backend unit tests passed with 0 failures across 13 test suites (`npm run test`)
+  - Production builds for backend and frontend succeeded with 0 errors (`npm run build`)
+  - Automated E2E verification test passed verifying unconfigured fallback, mocked cloud upload, permission granting, disk cleanup, and Prisma model persistence (`backend/test_storage.mjs`)

@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { GoogleDriveService } from '../storage/google-drive.service.js';
 import { CreateMaterialDto } from './dto/create-material.dto.js';
 import { UserRole } from '@prisma/client';
 import { join, extname } from 'node:path';
@@ -14,7 +15,10 @@ const uploadDirectory = join(process.cwd(), 'uploads', 'materials');
 
 @Injectable()
 export class MaterialsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly googleDriveService: GoogleDriveService,
+  ) {}
 
   private formatMaterial(material: any) {
     if (!material) return null;
@@ -80,7 +84,22 @@ export class MaterialsService {
     }
 
     const fileType = this.detectFileType(file.originalname, file.mimetype);
-    const fileUrl = `/uploads/materials/${file.filename}`;
+    let fileUrl = `/uploads/materials/${file.filename}`;
+    let driveFileId: string | null = null;
+    let sizeBytes = BigInt(file.size || 0);
+
+    if (this.googleDriveService?.isConfigured()) {
+      try {
+        const driveResult = await this.googleDriveService.uploadFile(file, 'Materials');
+        driveFileId = driveResult.fileId;
+        fileUrl = driveResult.webContentLink || driveResult.webViewLink || driveResult.previewUrl;
+        if (driveResult.sizeBytes) {
+          sizeBytes = BigInt(driveResult.sizeBytes);
+        }
+      } catch (driveErr) {
+        console.warn('[MaterialsService] Google Drive upload failed, falling back to local disk:', driveErr);
+      }
+    }
 
     const material = await this.prisma.courseMaterial.create({
       data: {
@@ -90,7 +109,8 @@ export class MaterialsService {
         fileUrl,
         fileName: file.filename,
         fileType,
-        sizeBytes: BigInt(file.size || 0),
+        sizeBytes,
+        driveFileId,
       },
     });
 
@@ -141,6 +161,15 @@ export class MaterialsService {
 
     if (userRole === UserRole.INSTRUCTOR && material.course.instructorId !== userId) {
       throw new ForbiddenException('You can only delete materials from your own courses');
+    }
+
+    // Delete file from Google Drive if present
+    if (material.driveFileId && this.googleDriveService?.isConfigured()) {
+      try {
+        await this.googleDriveService.deleteFile(material.driveFileId);
+      } catch (err) {
+        console.warn(`[MaterialsService] Failed to delete file ${material.driveFileId} from Google Drive:`, err);
+      }
     }
 
     // Unlink physical file

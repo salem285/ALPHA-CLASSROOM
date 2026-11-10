@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { GoogleDriveService } from '../storage/google-drive.service.js';
 import { CreateRecordingDto } from './dto/create-recording.dto.js';
 import { UserRole } from '@prisma/client';
 import { join } from 'node:path';
@@ -13,7 +14,10 @@ import type { Request, Response } from 'express';
 
 @Injectable()
 export class RecordingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly googleDriveService: GoogleDriveService,
+  ) {}
 
   private formatRecording(recording: any) {
     if (!recording) return null;
@@ -68,8 +72,24 @@ export class RecordingsService {
       `Lecture Recording - ${new Date().toLocaleDateString()}`;
 
     const durationSeconds = dto.durationSeconds ? Math.max(0, Math.round(Number(dto.durationSeconds))) : 0;
-    const sizeBytes = BigInt(file.size || 0);
-    const fileUrl = `/uploads/recordings/${file.filename}`;
+    let sizeBytes = BigInt(file.size || 0);
+    let fileUrl = `/uploads/recordings/${file.filename}`;
+    let driveFileId: string | null = null;
+    let previewUrl: string | null = null;
+
+    if (this.googleDriveService?.isConfigured()) {
+      try {
+        const driveResult = await this.googleDriveService.uploadFile(file, 'Recordings');
+        driveFileId = driveResult.fileId;
+        previewUrl = driveResult.previewUrl;
+        fileUrl = driveResult.webViewLink || driveResult.webContentLink || previewUrl;
+        if (driveResult.sizeBytes) {
+          sizeBytes = BigInt(driveResult.sizeBytes);
+        }
+      } catch (driveErr) {
+        console.warn('[RecordingsService] Google Drive upload failed, falling back to local disk:', driveErr);
+      }
+    }
 
     const recording = await this.prisma.recording.create({
       data: {
@@ -80,6 +100,8 @@ export class RecordingsService {
         fileUrl,
         durationSeconds,
         sizeBytes,
+        driveFileId,
+        previewUrl,
       },
       include: {
         room: {
@@ -159,6 +181,15 @@ export class RecordingsService {
       throw new ForbiddenException('You are not authorized to delete this recording');
     }
 
+    // Delete file from Google Drive if present
+    if (recording.driveFileId && this.googleDriveService?.isConfigured()) {
+      try {
+        await this.googleDriveService.deleteFile(recording.driveFileId);
+      } catch (err) {
+        console.warn(`[RecordingsService] Failed to delete file ${recording.driveFileId} from Google Drive:`, err);
+      }
+    }
+
     // Delete file from disk
     const filePath = join(process.cwd(), 'uploads', 'recordings', recording.fileName);
     if (existsSync(filePath)) {
@@ -183,6 +214,11 @@ export class RecordingsService {
 
     if (!recording) {
       throw new NotFoundException(`Recording with ID ${id} not found`);
+    }
+
+    if (recording.previewUrl || (recording.fileUrl && recording.fileUrl.startsWith('http'))) {
+      const redirectUrl = recording.previewUrl || recording.fileUrl;
+      return res.redirect(redirectUrl);
     }
 
     this.pipeVideoFile(recording.fileName, req, res);

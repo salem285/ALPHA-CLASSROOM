@@ -1758,7 +1758,7 @@ export default function InstructorDashboardPage() {
                             <div className="flex items-center justify-between mb-2.5">
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/60 flex items-center gap-1">
                                 <Film className="w-3 h-3 text-purple-400" />
-                                Archived Lecture
+                                {rec.driveFileId ? 'Drive Cloud 5TB' : 'Archived Lecture'}
                               </span>
                               <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
                                 <Clock className="w-3 h-3 text-slate-500" />
@@ -3242,16 +3242,28 @@ export default function InstructorDashboardPage() {
               </button>
             </div>
 
-            <div className="p-4 bg-black flex items-center justify-center relative overflow-hidden">
+            <div className="p-4 bg-black flex items-center justify-center relative overflow-hidden min-h-[300px]">
               <VideoWatermark />
-              <video
-                controls
-                autoPlay
-                className="w-full max-h-[60vh] rounded-lg shadow-lg relative z-10"
-                src={getRecordingStreamUrl(activeRecordingForPlayback)}
-              >
-                Your browser does not support video playback.
-              </video>
+              {activeRecordingForPlayback.previewUrl || activeRecordingForPlayback.driveFileId ? (
+                <iframe
+                  src={
+                    activeRecordingForPlayback.previewUrl ||
+                    `https://drive.google.com/file/d/${activeRecordingForPlayback.driveFileId}/preview`
+                  }
+                  className="w-full h-[60vh] rounded-lg shadow-lg relative z-10 border-0"
+                  allow="autoplay; encrypted-media; fullscreen"
+                  allowFullScreen
+                />
+              ) : (
+                <video
+                  controls
+                  autoPlay
+                  className="w-full max-h-[60vh] rounded-lg shadow-lg relative z-10"
+                  src={getRecordingStreamUrl(activeRecordingForPlayback)}
+                >
+                  Your browser does not support video playback.
+                </video>
+              )}
             </div>
 
             <div className="p-4 px-6 border-t border-[#21294c] bg-[#0e1224] flex items-center justify-between">
@@ -3259,10 +3271,21 @@ export default function InstructorDashboardPage() {
                 <span>
                   File: <code className="text-purple-300 font-mono">{activeRecordingForPlayback.fileName}</code>
                 </span>
+                {activeRecordingForPlayback.driveFileId && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
+                    Google Drive 5TB
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <a
-                  href={getRecordingStreamUrl(activeRecordingForPlayback)}
+                  href={
+                    activeRecordingForPlayback.fileUrl?.startsWith('http')
+                      ? activeRecordingForPlayback.fileUrl
+                      : getRecordingStreamUrl(activeRecordingForPlayback)
+                  }
+                  target={activeRecordingForPlayback.fileUrl?.startsWith('http') ? '_blank' : undefined}
+                  rel="noopener noreferrer"
                   download={activeRecordingForPlayback.fileName}
                   className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-[#1a203a] hover:bg-[#252f5c] text-slate-200 border border-[#2b3664] transition flex items-center gap-1.5"
                 >

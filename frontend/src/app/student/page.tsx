@@ -1573,7 +1573,7 @@ export default function StudentDashboardPage() {
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/60 flex items-center gap-1">
                               <Film className="w-3 h-3 text-purple-400" />
-                              Recorded Lecture
+                              {rec.driveFileId ? 'Drive Cloud 5TB' : 'Recorded Lecture'}
                             </span>
                             <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
                               <Clock className="w-3 h-3 text-slate-500" />
@@ -1606,7 +1606,13 @@ export default function StudentDashboardPage() {
                             <span>Watch Lecture / تشغيل</span>
                           </button>
                           <a
-                            href={getRecordingStreamUrl(rec)}
+                            href={
+                              rec.fileUrl?.startsWith('http')
+                                ? rec.fileUrl
+                                : getRecordingStreamUrl(rec)
+                            }
+                            target={rec.fileUrl?.startsWith('http') ? '_blank' : undefined}
+                            rel="noopener noreferrer"
                             download={rec.fileName}
                             className="p-2 rounded-xl bg-[#141a33] hover:bg-[#1d264a] text-slate-300 hover:text-white border border-[#232c52] transition flex items-center justify-center"
                             title="Download video file"
@@ -2556,16 +2562,28 @@ export default function StudentDashboardPage() {
               </button>
             </div>
 
-            <div className="p-4 bg-black flex items-center justify-center relative overflow-hidden">
+            <div className="p-4 bg-black flex items-center justify-center relative overflow-hidden min-h-[300px]">
               <VideoWatermark />
-              <video
-                controls
-                autoPlay
-                className="w-full max-h-[60vh] rounded-lg shadow-lg relative z-10"
-                src={getRecordingStreamUrl(activeRecordingForPlayback)}
-              >
-                Your browser does not support video playback.
-              </video>
+              {activeRecordingForPlayback.previewUrl || activeRecordingForPlayback.driveFileId ? (
+                <iframe
+                  src={
+                    activeRecordingForPlayback.previewUrl ||
+                    `https://drive.google.com/file/d/${activeRecordingForPlayback.driveFileId}/preview`
+                  }
+                  className="w-full h-[60vh] rounded-lg shadow-lg relative z-10 border-0"
+                  allow="autoplay; encrypted-media; fullscreen"
+                  allowFullScreen
+                />
+              ) : (
+                <video
+                  controls
+                  autoPlay
+                  className="w-full max-h-[60vh] rounded-lg shadow-lg relative z-10"
+                  src={getRecordingStreamUrl(activeRecordingForPlayback)}
+                >
+                  Your browser does not support video playback.
+                </video>
+              )}
             </div>
 
             <div className="p-4 px-6 border-t border-[#21294c] bg-[#0e1224] flex items-center justify-between">
@@ -2573,10 +2591,21 @@ export default function StudentDashboardPage() {
                 <span>
                   Lecture Archive: <code className="text-purple-300 font-mono">{activeRecordingForPlayback.fileName}</code>
                 </span>
+                {activeRecordingForPlayback.driveFileId && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
+                    Google Drive 5TB
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <a
-                  href={getRecordingStreamUrl(activeRecordingForPlayback)}
+                  href={
+                    activeRecordingForPlayback.fileUrl?.startsWith('http')
+                      ? activeRecordingForPlayback.fileUrl
+                      : getRecordingStreamUrl(activeRecordingForPlayback)
+                  }
+                  target={activeRecordingForPlayback.fileUrl?.startsWith('http') ? '_blank' : undefined}
+                  rel="noopener noreferrer"
                   download={activeRecordingForPlayback.fileName}
                   className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-[#1a203a] hover:bg-[#252f5c] text-slate-200 border border-[#2b3664] transition flex items-center gap-1.5"
                 >

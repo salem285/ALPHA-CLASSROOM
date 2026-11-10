@@ -10,5 +10,7 @@ export interface Recording {
   durationSeconds: number;
   sizeBytes: number;
   recordedAt: string;
+  driveFileId?: string | null;
+  previewUrl?: string | null;
   room?: Partial<LiveRoom> | null;
 }

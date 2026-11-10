@@ -7,6 +7,7 @@ export interface CourseMaterial {
   fileName: string;
   fileType: 'PDF' | 'ZIP' | 'DOC' | 'OTHER' | string;
   sizeBytes: number;
+  driveFileId?: string | null;
   createdAt: string;
 }
 

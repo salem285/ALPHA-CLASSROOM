@@ -6,6 +6,7 @@ import { NotFoundException, ForbiddenException, BadRequestException } from '@nes
 describe('MaterialsService', () => {
   let materialsService: MaterialsService;
   let mockPrisma: any;
+  let mockGoogleDrive: any;
 
   beforeEach(() => {
     mockPrisma = {
@@ -23,7 +24,13 @@ describe('MaterialsService', () => {
       },
     };
 
-    materialsService = new MaterialsService(mockPrisma as any);
+    mockGoogleDrive = {
+      isConfigured: vi.fn().mockReturnValue(false),
+      uploadFile: vi.fn(),
+      deleteFile: vi.fn(),
+    };
+
+    materialsService = new MaterialsService(mockPrisma as any, mockGoogleDrive as any);
   });
 
   describe('detectFileType', () => {
@@ -96,6 +103,55 @@ describe('MaterialsService', () => {
       expect(result.sizeBytes).toBe(2048);
       expect(typeof result.sizeBytes).toBe('number');
     });
+
+    it('should upload material to Google Drive when configured', async () => {
+      mockGoogleDrive.isConfigured.mockReturnValue(true);
+      mockGoogleDrive.uploadFile.mockResolvedValue({
+        fileId: 'drive-mat-1',
+        webViewLink: 'https://drive.google.com/file/d/drive-mat-1/view',
+        webContentLink: 'https://drive.google.com/uc?id=drive-mat-1',
+        previewUrl: 'https://drive.google.com/file/d/drive-mat-1/preview',
+        sizeBytes: 4096,
+      });
+
+      mockPrisma.course.findUnique.mockResolvedValue({ id: 'c-1', instructorId: 'inst-1' });
+      mockPrisma.courseMaterial.create.mockResolvedValue({
+        id: 'mat-cloud-1',
+        courseId: 'c-1',
+        title: 'Cloud Document',
+        fileUrl: 'https://drive.google.com/uc?id=drive-mat-1',
+        fileName: 'doc.pdf',
+        fileType: 'PDF',
+        driveFileId: 'drive-mat-1',
+        sizeBytes: BigInt(4096),
+        createdAt: new Date(),
+      });
+
+      const fakeFile: any = {
+        originalname: 'doc.pdf',
+        filename: 'mat-doc.pdf',
+        size: 4096,
+        mimetype: 'application/pdf',
+      };
+
+      const result = await materialsService.create(
+        'c-1',
+        fakeFile,
+        { title: 'Cloud Document' },
+        'inst-1',
+        UserRole.INSTRUCTOR,
+      );
+
+      expect(mockGoogleDrive.uploadFile).toHaveBeenCalledWith(fakeFile, 'Materials');
+      expect(result.driveFileId).toBe('drive-mat-1');
+      expect(mockPrisma.courseMaterial.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            driveFileId: 'drive-mat-1',
+          }),
+        }),
+      );
+    });
   });
 
   describe('findByCourse', () => {
@@ -149,6 +205,23 @@ describe('MaterialsService', () => {
       mockPrisma.courseMaterial.delete.mockResolvedValue({ id: 'm-1' });
 
       const res = await materialsService.delete('m-1', 'inst-1', UserRole.INSTRUCTOR);
+      expect(res.message).toContain('deleted successfully');
+    });
+
+    it('should delete file from Google Drive when driveFileId exists and drive is configured', async () => {
+      mockGoogleDrive.isConfigured.mockReturnValue(true);
+      mockGoogleDrive.deleteFile.mockResolvedValue(true);
+
+      mockPrisma.courseMaterial.findUnique.mockResolvedValue({
+        id: 'm-drive-1',
+        fileName: 'mat-test.pdf',
+        driveFileId: 'drive-mat-999',
+        course: { instructorId: 'inst-1' },
+      });
+      mockPrisma.courseMaterial.delete.mockResolvedValue({ id: 'm-drive-1' });
+
+      const res = await materialsService.delete('m-drive-1', 'inst-1', UserRole.INSTRUCTOR);
+      expect(mockGoogleDrive.deleteFile).toHaveBeenCalledWith('drive-mat-999');
       expect(res.message).toContain('deleted successfully');
     });
   });
